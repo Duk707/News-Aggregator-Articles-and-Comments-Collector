@@ -21,7 +21,7 @@ This document provides complete technical documentation for developers, software
 7. [PyInstaller Standalone Executable Packaging](#pyinstaller-standalone-executable-packaging)
    - [Windowed Onefile Architecture](#windowed-onefile-architecture)
    - [Playwright & Chromium Bundling](#playwright--chromium-bundling)
-   - [Frozen Runtime stdio Fallback Mechanism](#frozen-runtime-stdio-fallback-mechanism)
+   - [Frozen Runtime stdio Fallback Mechanism (`os.devnull`)](#frozen-runtime-stdio-fallback-mechanism-osdevnull)
    - [Rebuilding the Executable](#rebuilding-the-executable)
 8. [Testing Suite & Environment Considerations](#testing-suite--environment-considerations)
    - [Anaconda Tcl/Tk Fix (`tests/conftest.py`)](#anaconda-tcltk-fix-testsconftestpy)
@@ -38,13 +38,13 @@ The application follows an **Adapter-Based Architecture**. Source-specific extra
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        Graphical User Interface                         │
-│                         (src.gui.app / CustomTkinter)                   │
+│                       (src.gui.app / Tkinter / TTK)                     │
 └───────────────────┬─────────────────────────────────┬───────────────────┘
                     │                                 │
                     ▼                                 ▼
 ┌───────────────────────────────────────┐ ┌───────────────────────────────┐
 │     Candidate Discovery Engine        │ │   Article Collector Engine    │
-│      (src.discovery.search)           │ │  (src.collectors.pipeline)    │
+│      (src.discovery.search)           │ │   (src.collectors.batch)      │
 └───────────────────┬───────────────────┘ └───────────────┬───────────────┘
                     │                                     │
                     ▼                                     ▼
@@ -56,13 +56,14 @@ The application follows an **Adapter-Based Architecture**. Source-specific extra
                     ▼                                 ▼
 ┌───────────────────────────────────────┐ ┌───────────────────────────────┐
 │             YahooAdapter              │ │          MSNAdapter           │
-│      (src.adapters.yahoo_adapter)     │ │   (src.adapters.msn_adapter)  │
+│       (src.collectors.yahoo)          │ │       (src.collectors.msn)    │
 └───────────────────┬───────────────────┘ └───────────────┬───────────────┘
                     │                                     │
                     ▼                                     ▼
 ┌───────────────────────────────────────┐ ┌───────────────────────────────┐
 │      Yahoo Nexus GraphQL Gateway      │ │   MSN Peregrine / Community   │
-│      (src.comments.yahoo_graphql)     │ │   (src.comments.msn_api)      │
+│      (src.extraction.comments)        │ │  (src.collectors.msn &        │
+│                                       │ │   src.extraction.comments)    │
 └───────────────────────────────────────┘ └───────────────────────────────┘
 ```
 
@@ -70,7 +71,7 @@ The application follows an **Adapter-Based Architecture**. Source-specific extra
 
 ## Data Models & Schema Contracts
 
-Core data structures are defined as strongly typed dataclasses in `src/models/`:
+Core data structures are defined as strongly typed dataclasses and Pydantic models in `src/models/` and `src/discovery/models.py`:
 
 - **`Article`** (`src/models/article.py`):
   - `platform`: Name of the target source (`Yahoo`, `MSN`).
@@ -99,7 +100,7 @@ Core data structures are defined as strongly typed dataclasses in `src/models/`:
   - `replies`: List of nested child `Comment` instances.
 
 - **`CandidateArticle`** (`src/discovery/models.py`):
-  - Represents an uncollected article candidate discovered during search.
+  - Dataclass representing an uncollected candidate article discovered during Bing News RSS discovery queries.
 
 ---
 
@@ -108,8 +109,8 @@ Core data structures are defined as strongly typed dataclasses in `src/models/`:
 URL recognition and adapter dispatch are managed by `SourceRouter` (`src/collectors/router.py`).
 
 1. `SourceRouter` evaluates input URLs using regular expressions.
-2. If matched, it delegates execution to the registered `BaseAdapter` instance (`YahooAdapter` or `MSNAdapter`).
-3. Adding support for a new website requires creating a new adapter class inheriting from `BaseAdapter` (`src/adapters/base_adapter.py`) without altering existing adapters or export logic.
+2. If matched, it delegates execution to the registered `BaseAdapter` subclass (`YahooAdapter` in `src/collectors/yahoo.py` or `MSNAdapter` in `src/collectors/msn.py`).
+3. Adding support for a new website requires creating a new adapter class inheriting from `BaseAdapter` (`src/collectors/base.py`) without altering existing adapters or export logic.
 
 ---
 
@@ -120,7 +121,7 @@ Article body extraction follows a 4-tier fallback sequence (`src/extraction/arti
 1. **Structured Metadata**: `application/ld+json`, OpenGraph (`og:description`), and standard meta tags.
 2. **Semantic HTML**: `<article>`, `<main>`, `itemprop="articleBody"`, and semantic paragraph structures.
 3. **Source-Specific Selectors**: Platform container rules.
-4. **Rendered DOM**: Browser rendering via Playwright for JavaScript-hydrated pages.
+4. **Rendered DOM**: Browser rendering via Playwright (`src/browser/manager.py`) for JavaScript-hydrated pages.
 
 ### Boilerplate Removal Rules
 
@@ -139,18 +140,18 @@ Article text extraction applies structural DOM filtering followed by targeted te
 
 ### Yahoo News Nexus GraphQL Gateway Architecture
 
-Yahoo News delivers public user comments via the unauthenticated **Yahoo Nexus GraphQL Gateway API** (`src/comments/yahoo_graphql.py`).
+Yahoo News delivers public user comments via the unauthenticated **Yahoo Nexus GraphQL Gateway API** (`src/extraction/comments.py`).
 
 - **Endpoint URL**: `https://nexus-gateway-prod.media.yahoo.com/graphql`
 - **Authentication**: Unauthenticated public GraphQL queries using persisted query hashes.
 - **Persisted Query Hashes**:
   - **`ycp_GetConversationWithMultipleContents_v1.2.0`**: Fetches initial conversation details, comment count, and top-level comment threads.
   - **`ycp_GetCommentReplies_v1.4.16`**: Fetches nested reply threads for a specific top-level comment ID.
-- **Context Resolution**: The collector extracts the required `spaceId`, `contextToken`, and `uuid` parameters dynamically from rendered Yahoo article HTML (`window.INITIAL_STATE` or inline JSON scripts).
+- **Context Resolution**: The `YahooCommentExtractor` class extracts the required `spaceId`, `contextToken`, and article UUID dynamically from rendered Yahoo article HTML (`window.INITIAL_STATE` or inline JSON scripts).
 
 ### MSN Peregrine & Community REST API Architecture
 
-MSN delivers public comments via unauthenticated REST endpoints (`src/comments/msn_api.py`).
+MSN delivers public comments via unauthenticated REST endpoints (`src/collectors/msn.py` and `src/extraction/comments.py`).
 
 - **Endpoints**:
   - `https://assets.msn.com/service/MSN/Peregrine/community/v1/...`
@@ -204,7 +205,7 @@ Discovered URLs pass through `clean_tracking_params()` (`src/discovery/search.py
 
 ### Windowed Onefile Architecture
 
-The standalone executable (`dist/NewsArticleCollector.exe`) is packaged using PyInstaller in single-file mode (`onefile`) with windowed mode enabled (`console=False` / `--noconsole`).
+The standalone executable (`NewsArticleCollector.exe`) is packaged using PyInstaller in single-file mode (`onefile`) with windowed mode enabled (`console=False` / `--noconsole`).
 
 - **Spec File**: `NewsArticleCollector.spec`
 - **Target Executable**: `dist/NewsArticleCollector.exe`
@@ -212,27 +213,28 @@ The standalone executable (`dist/NewsArticleCollector.exe`) is packaged using Py
 
 ### Playwright & Chromium Bundling
 
-The executable bundles application code and the Playwright Chromium browser driver:
-- `playwright/driver/package/.local-browsers/` is included inside the PyInstaller payload.
-- At runtime, PyInstaller extracts assets to a temporary directory (`sys._MEIPASS`). `main.py` configures the `PLAYWRIGHT_BROWSERS_PATH` environment variable to point to `sys._MEIPASS` so Playwright reuses the bundled Chromium binary without requiring external downloads.
+The executable spec file (`NewsArticleCollector.spec`) dynamically discovers host Playwright Chromium binaries:
+- `user_ms_playwright = os.path.expanduser('~\\AppData\\Local\\ms-playwright')` is bundled into the `ms-playwright/` target path inside PyInstaller's payload (`sys._MEIPASS`).
+- At startup, `main.py` resolves `bundled_browsers = os.path.join(sys._MEIPASS, "ms-playwright")` and sets `os.environ["PLAYWRIGHT_BROWSERS_PATH"] = bundled_browsers` so Playwright reuses the bundled Chromium binary without requiring external downloads.
 
-### Frozen Runtime stdio Fallback Mechanism
+### Frozen Runtime stdio Fallback Mechanism (`os.devnull`)
 
-When PyInstaller executes in windowed mode (`console=False`), standard I/O streams (`sys.stdout`, `sys.stderr`, `sys.stdin`) are set to `None` by Windows `runw.exe`. Because Playwright's NodeJS driver relies on standard file descriptor operations, invoking Playwright under windowed mode can result in `AttributeError: 'NoneType' object has no attribute 'write'`.
+When PyInstaller executes in windowed mode (`console=False`), standard I/O streams (`sys.stdout`, `sys.stderr`, `sys.stdin`) are set to `None` by Windows `runw.exe`. Because Playwright's NodeJS driver relies on valid file descriptors, invoking Playwright under windowed mode can result in `AttributeError: 'NoneType' object has no attribute 'write'`.
 
-To prevent crashes, `main.py` reassigns `None` stdio streams to memory buffer fallbacks at startup:
+To prevent crashes, `main.py` inspects stream handles at startup and redirects invalid stdio streams to `os.devnull`:
 
 ```python
-import sys
-import io
-
 if getattr(sys, 'frozen', False):
-    if sys.stdout is None:
-        sys.stdout = io.StringIO()
-    if sys.stderr is None:
-        sys.stderr = io.StringIO()
-    if sys.stdin is None:
-        sys.stdin = io.BytesIO()
+    if sys.stdout is None or getattr(sys.stdout, 'fileno', lambda: -1)() < 0:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None or getattr(sys.stderr, 'fileno', lambda: -1)() < 0:
+        sys.stderr = open(os.devnull, "r", encoding="utf-8")
+    if sys.stdin is None or getattr(sys.stdin, 'fileno', lambda: -1)() < 0:
+        sys.stdin = open(os.devnull, "r", encoding="utf-8")
+
+    # Set working directory to the executable's folder so outputs persist beside the EXE
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    os.chdir(exe_dir)
 ```
 
 ### Rebuilding the Executable

@@ -8,7 +8,7 @@ This research prototype supports an engineering design project focusing on **AI 
 
 ### Key Capabilities
 
-- **GUI Interface**: User-friendly desktop interface built with CustomTkinter and Tkinter.
+- **GUI Interface**: User-friendly desktop interface built with Tkinter / TTK.
 - **Direct URL Collection**: Enter individual or batch news article URLs from Yahoo News and MSN.
 - **Candidate Discovery**: Topic-based discovery powered by Bing News RSS with keyword filtering, observed date range reporting, and source-balanced candidate selection.
 - **Full Article Extraction**: Standardized extraction of article titles, authors, publication dates, canonical URLs, and cleaned article text (free of site boilerplate).
@@ -19,10 +19,12 @@ This research prototype supports an engineering design project focusing on **AI 
 
 ---
 
-## Supported Sources
+## Supported Sources & System Compatibility
 
-- **Yahoo News** (`news.yahoo.com`, `yahoo.com`)
-- **MSN News** (`msn.com`)
+- **Supported Platforms**: Yahoo News (`news.yahoo.com`, `yahoo.com`) and MSN News (`msn.com`).
+- **Validated Operating Systems**:
+  - **Standalone Executable**: Validated for **64-bit Windows** (Windows 10/11 x64).
+  - **Python Source Code**: Designed for **Python 3.11+** (validated on Windows; source code uses cross-platform Python libraries).
 
 ---
 
@@ -30,21 +32,25 @@ This research prototype supports an engineering design project focusing on **AI 
 
 ### 1. Standalone Windows Executable (Recommended for Non-Developers)
 
-No Python installation or command-line setup is required to run the pre-built executable. The single-file package includes a bundled Python runtime and Playwright Chromium driver.
+No Python installation, Git commands, or separate Playwright setup is required to run the packaged application. Pre-built standalone executables are distributed through the project's **GitHub Releases** section.
 
-1. Navigate to the `dist/` directory.
-2. Double-click `NewsArticleCollector.exe`.
-3. The graphical user interface will open directly.
+1. Open the repository's **Releases** section on GitHub.
+2. Download `NewsArticleCollector.exe` from the desired release asset list.
+3. Place `NewsArticleCollector.exe` in any normal writable folder on your computer.
+4. Double-click `NewsArticleCollector.exe` to launch the graphical interface directly.
 
-> **Note on Windows SmartScreen**: If Windows displays an *"Unknown Publisher"* or *"Windows protected your PC"* prompt upon launch, click **"More info"** and then select **"Run anyway"**. This warning appears because the prototype executable is un-signed.
+> **Note on File Outputs**: The standalone executable creates and manages its `data/` directories (`data/output/` and `data/diagnostics/`) relative to the location of the `.exe` file.
+>
+> **Note on Windows SmartScreen**: If Windows displays an *"Unknown Publisher"* or *"Windows protected your PC"* prompt upon launch, verify that you downloaded the executable from the official project repository, then click **"More info"** and select **"Run anyway"**. This warning appears because the prototype executable is un-signed.
 
 ### 2. Running from Python Source Code
 
-Requires Python installed on Windows, Linux, or macOS.
+Requires Python 3.11+ installed.
 
 ```bash
-# 1. Clone or extract the repository
-cd "New article and Comments Collector"
+# 1. Clone the public repository and navigate into the folder
+git clone https://github.com/Duk707/News-Aggregator-Articles-and-Comments-Collector.git
+cd News-Aggregator-Articles-and-Comments-Collector
 
 # 2. Create and activate a virtual environment
 python -m venv .venv
@@ -85,25 +91,25 @@ For detailed guides and technical specifications, refer to:
 
 ```text
 .
-├── dist/                      # Packaged standalone executable (NewsArticleCollector.exe)
 ├── src/                       # Application source code
-│   ├── collectors/            # SourceRouter and collection pipeline orchestrator
-│   ├── adapters/              # Platform adapters (YahooAdapter, MSNAdapter)
+│   ├── browser/               # Browser automation manager (Playwright)
+│   ├── collectors/            # SourceRouter, base adapter, Yahoo & MSN collection pipeline
 │   ├── discovery/             # Candidate Discovery engine (Bing News RSS parser)
-│   ├── extraction/            # Article text and metadata extraction routines
-│   ├── comments/              # Public comment extraction (Yahoo GraphQL & MSN REST)
-│   ├── exporters/             # JSON and CSV export generators
-│   ├── gui/                   # Desktop graphical user interface (CustomTkinter)
-│   └── models/                # Dataclass models (Article, Comment, CandidateArticle)
-├── tests/                     # Automated unit and integration test suite
-├── data/                      # Persistent storage directory
-│   ├── input/                 # Input URL batch files
-│   ├── output/                # Exported JSON and CSV datasets
-│   └── diagnostics/           # Extraction diagnostics and HTML snapshots
-├── scratch/                   # Historical research, analysis, and diagnostic scripts
+│   ├── export/                # JSON and CSV export generators
+│   ├── extraction/            # Article text, comment, and metadata extraction routines
+│   ├── gui/                   # Desktop graphical user interface (Tkinter / TTK)
+│   ├── models/                # Dataclass models (Article, Comment, CandidateArticle, etc.)
+│   └── utils/                 # URL validation and helper functions
+├── tests/                     # Automated unit and integration test suite (with fixtures)
+├── data/                      # Data folder templates (.gitkeep files)
+│   ├── input/                 # Input URL batch file directory
+│   ├── output/                # Exported JSON and CSV datasets directory
+│   └── diagnostics/           # Extraction diagnostics and HTML snapshots directory
 ├── main.py                    # Application launch entry point
 ├── NewsArticleCollector.spec  # PyInstaller packaging configuration
 ├── requirements.txt           # Python dependency requirements
+├── pytest.ini                 # Pytest test suite configuration
+├── .gitignore                 # Git ignore rules for environments, outputs, and scratch files
 ├── README.md                  # Project overview and quick start (this file)
 ├── USER_GUIDE.md              # End-user manual and operational guide
 └── DEVELOPER.md               # Technical architecture and developer documentation
