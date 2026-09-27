@@ -1,0 +1,75 @@
+{
+  "data": {
+    "getContentComment": {
+      "replies": {
+        "totalCount": 2,
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        },
+        "edges": [
+          {
+            "node": {
+              "id": "yahoo_r1_child",
+              "createdAt": "2026-09-26T06:10:00Z",
+              "updatedAt": null,
+              "status": "MODERATED",
+              "type": "REPLY",
+              "conversationId": "conv_12345",
+              "content": {
+                "body": "First reply to Alice's comment regarding AI tools.",
+                "bodyType": "YCP_MARKDOWN"
+              },
+              "visibility": {
+                "status": "VISIBLE"
+              },
+              "author": {
+                "profile": {
+                  "nickname": "Charlie",
+                  "handle": "charlie789"
+                },
+                "totalCommentCount": 15
+              },
+              "feelingCount": {
+                "thumbup": 3
+              },
+              "replies": {
+                "totalCount": 0
+              }
+            }
+          },
+          {
+            "node": {
+              "id": "yahoo_r2_child",
+              "createdAt": "2026-09-26T06:15:00Z",
+              "updatedAt": null,
+              "status": "MODERATED",
+              "type": "REPLY",
+              "conversationId": "conv_12345",
+              "content": {
+                "body": "Second reply agreeing with Alice.",
+                "bodyType": "YCP_MARKDOWN"
+              },
+              "visibility": {
+                "status": "VISIBLE"
+              },
+              "author": {
+                "profile": {
+                  "nickname": "David",
+                  "handle": "david101"
+                },
+                "totalCommentCount": 8
+              },
+              "feelingCount": {
+                "thumbup": 1
+              },
+              "replies": {
+                "totalCount": 0
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

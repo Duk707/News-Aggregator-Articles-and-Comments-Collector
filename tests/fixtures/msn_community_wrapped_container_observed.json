@@ -1,0 +1,115 @@
+{
+  "@odata.context": "https://api.msn.com/community/comments/$metadata#",
+  "value": [
+    {
+      "links": [
+        {
+          "type": "Content",
+          "item": {
+            "id": "AA2cVKOw_en-us",
+            "cmsId": "AA2cVKOw",
+            "market": "en-us",
+            "title": "Iran-US war latest: Trump 'renames' Strait of Hormuz",
+            "url": "https://www.msn.com/en-us/news/other/iran-us-war-latest-trump-renames-strait-of-hormuz/ar-AA2cVKOw",
+            "commentStatus": "On",
+            "commentSummary": {
+              "subCommentSummaries": [
+                { "type": "Comment", "totalCount": 33 },
+                { "type": "Reply", "totalCount": 21 }
+              ],
+              "totalCount": 54
+            }
+          }
+        }
+      ],
+      "id": "503ddeaa-b87c-4e6c-a705-d5dab89950a7",
+      "totalCount": 35,
+      "skip": 0,
+      "top": 50,
+      "orderby": "Rating",
+      "asc": false,
+      "hasMore": false,
+      "hasPrevious": false,
+      "items": [
+        {
+          "links": [
+            {
+              "type": "User",
+              "item": {
+                "id": "cid-07536ebbb40f7f86",
+                "firstName": "Jeffrey",
+                "lastName": "Redding",
+                "primaryName": "Jeffrey Redding"
+              }
+            }
+          ],
+          "id": "2107e432-4a30-42d2-93f4-c38c7db04569",
+          "contentId": "AA2cVKOw_en-us",
+          "parentId": "",
+          "body": "Warning Xi, while he lavishes him with praise and gives him a seat at the table.",
+          "createdTime": "2026-09-25T15:19:44Z",
+          "reactionSummary": {
+            "subReactionSummaries": [{ "type": "Upvote", "totalCount": 24 }],
+            "totalCount": 26
+          },
+          "commentSummary": {
+            "subCommentSummaries": [{ "type": "Reply", "totalCount": 1 }],
+            "totalCount": 1
+          }
+        },
+        {
+          "links": [
+            {
+              "type": "User",
+              "item": {
+                "id": "cid-444bd2a8641d497c",
+                "firstName": "Jake",
+                "lastName": "Wilson",
+                "primaryName": "Jake Wilson"
+              }
+            }
+          ],
+          "id": "0391a6a5-b4fe-438b-bd3f-a9b713a1af44",
+          "contentId": "AA2cVKOw_en-us",
+          "parentId": "",
+          "body": "trump told Xi that China helping Iran was &apos;totally unacceptable&apos;...",
+          "createdTime": "2026-09-26T00:05:12Z",
+          "reactionSummary": {
+            "subReactionSummaries": [{ "type": "Upvote", "totalCount": 14 }],
+            "totalCount": 20
+          },
+          "commentSummary": {
+            "subCommentSummaries": [{ "type": "Reply", "totalCount": 4 }],
+            "totalCount": 4
+          }
+        },
+        {
+          "links": [
+            {
+              "type": "User",
+              "item": {
+                "id": "cid-b0b44feedcc1aa2d",
+                "firstName": "Judy",
+                "lastName": "Stock",
+                "primaryName": "Judy Stock"
+              }
+            }
+          ],
+          "id": "r1_child_reply",
+          "contentId": "AA2cVKOw_en-us",
+          "parentId": "2107e432-4a30-42d2-93f4-c38c7db04569",
+          "body": "I agree with this perspective on foreign policy.",
+          "createdTime": "2026-09-26T00:47:05Z",
+          "reactionSummary": {
+            "subReactionSummaries": [{ "type": "Upvote", "totalCount": 5 }],
+            "totalCount": 5
+          },
+          "commentSummary": {
+            "subCommentSummaries": [],
+            "totalCount": 0
+          }
+        }
+      ]
+    }
+  ]
+}

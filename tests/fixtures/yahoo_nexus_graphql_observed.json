@@ -1,0 +1,75 @@
+{
+  "data": {
+    "getContentConversation": {
+      "items": {
+        "totalCount": 5500,
+        "pageInfo": {
+          "hasNextPage": true,
+          "endCursor": "cursor_page_1_end"
+        },
+        "edges": [
+          {
+            "node": {
+              "id": "yahoo_c1_top",
+              "createdAt": "2026-09-26T06:00:00Z",
+              "updatedAt": null,
+              "status": "MODERATED",
+              "type": "COMMENT",
+              "conversationId": "conv_12345",
+              "content": {
+                "body": "First top-level Yahoo comment on AI in education.",
+                "bodyType": "YCP_MARKDOWN"
+              },
+              "visibility": {
+                "status": "VISIBLE"
+              },
+              "author": {
+                "profile": {
+                  "nickname": "Alice",
+                  "handle": "alice123"
+                },
+                "totalCommentCount": 42
+              },
+              "feelingCount": {
+                "thumbup": 15
+              },
+              "replies": {
+                "totalCount": 2
+              }
+            }
+          },
+          {
+            "node": {
+              "id": "yahoo_c2_top",
+              "createdAt": "2026-09-26T06:05:00Z",
+              "updatedAt": null,
+              "status": "MODERATED",
+              "type": "COMMENT",
+              "conversationId": "conv_12345",
+              "content": {
+                "body": "Second top-level Yahoo comment discussing classroom technology.",
+                "bodyType": "YCP_MARKDOWN"
+              },
+              "visibility": {
+                "status": "VISIBLE"
+              },
+              "author": {
+                "profile": {
+                  "nickname": "Bob",
+                  "handle": "bob456"
+                },
+                "totalCommentCount": 10
+              },
+              "feelingCount": {
+                "thumbup": 5
+              },
+              "replies": {
+                "totalCount": 0
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

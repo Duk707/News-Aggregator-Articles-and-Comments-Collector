@@ -1,0 +1,96 @@
+{
+  "@odata.context": "https://api.msn.com/community/comments/$metadata#",
+  "totalCount": 3,
+  "value": [
+    {
+      "id": "msn_c1_top",
+      "contentId": "AA2cWGok_en-us",
+      "parentId": "",
+      "body": "First top-level MSN comment on AI in education.",
+      "createdTime": "2026-09-25T17:39:21Z",
+      "updatedTime": "2026-09-25T17:39:21Z",
+      "createdBy": "cid-user123",
+      "reactionSummary": {
+        "subReactionSummaries": [
+          {
+            "type": "Upvote",
+            "totalCount": 5
+          }
+        ],
+        "totalCount": 5
+      },
+      "commentSummary": {
+        "subCommentSummaries": [
+          {
+            "type": "Reply",
+            "totalCount": 1
+          }
+        ],
+        "totalCount": 1
+      },
+      "links": [
+        {
+          "type": "User",
+          "item": {
+            "id": "cid-user123",
+            "primaryName": "Sarah Jenkins"
+          }
+        }
+      ]
+    },
+    {
+      "id": "msn_r1_reply",
+      "contentId": "AA2cWGok_en-us",
+      "parentId": "msn_c1_top",
+      "body": "Reply to Sarah's comment on robotics.",
+      "createdTime": "2026-09-25T18:00:00Z",
+      "updatedTime": "2026-09-25T18:00:00Z",
+      "createdBy": "cid-user456",
+      "reactionSummary": {
+        "subReactionSummaries": [
+          {
+            "type": "Upvote",
+            "totalCount": 2
+          }
+        ],
+        "totalCount": 2
+      },
+      "commentSummary": {
+        "totalCount": 0
+      },
+      "links": [
+        {
+          "type": "User",
+          "item": {
+            "id": "cid-user456",
+            "primaryName": "Tom Miller"
+          }
+        }
+      ]
+    },
+    {
+      "id": "msn_c2_top",
+      "contentId": "AA2cWGok_en-us",
+      "parentId": null,
+      "body": "Second top-level MSN comment.",
+      "createdTime": "2026-09-25T19:12:00Z",
+      "updatedTime": "2026-09-25T19:12:00Z",
+      "createdBy": "cid-user789",
+      "reactionSummary": {
+        "totalCount": 1
+      },
+      "commentSummary": {
+        "totalCount": 0
+      },
+      "links": [
+        {
+          "type": "User",
+          "item": {
+            "id": "cid-user789",
+            "primaryName": "Elena Vance"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# Core Dependencies for Adaptive News Article and Comment Collector
+
+# Playwright: Headless/headed browser automation for JavaScript-rendered news sites & dynamic comment loading
+playwright>=1.40.0
+
+# BeautifulSoup4: Fast and robust HTML parsing for structured metadata, semantic tags, and DOM extraction
+beautifulsoup4>=4.12.0
+
+# Pydantic: Data validation and standard schema definition for Article, Comment, and Diagnostic models
+pydantic>=2.0.0
+
+# Requests: Synchronous HTTP requests for static content fetching where browser rendering is not required
+requests>=2.31.0
+
+# Pytest: Framework for running unit, integration, and fixture-based parser tests
+pytest>=8.0.0

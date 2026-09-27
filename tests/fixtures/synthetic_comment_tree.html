@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <div class="comments-section">
+        <div class="msn-comment-item" data-comment-id="c1" data-depth="0" data-reply-count="1">
+            <span class="comment-author">UserAlpha</span>
+            <p class="comment-content">This is a top-level public comment regarding AI adoption in schools.</p>
+            <time datetime="2026-09-24T12:00:00Z">2026-09-24</time>
+            <span class="upvote-count">15</span>
+        </div>
+        <div class="msn-comment-item" data-comment-id="c2" data-parent-id="c1" data-depth="1">
+            <span class="comment-author">UserBeta</span>
+            <p class="comment-content">I agree with UserAlpha's point about teacher training.</p>
+            <time datetime="2026-09-24T12:30:00Z">2026-09-24</time>
+            <span class="upvote-count">4</span>
+        </div>
+        <!-- Intentional Duplicate ID to test comment deduplication -->
+        <div class="msn-comment-item" data-comment-id="c1" data-depth="0">
+            <span class="comment-author">UserAlpha</span>
+            <p class="comment-content">This is a top-level public comment regarding AI adoption in schools.</p>
+        </div>
+    </div>
+</body>
+</html>
