@@ -101,10 +101,12 @@ The main desktop window is organized into 4 vertical sections:
 1. **1. Article URLs Input**: Contains a multiline text entry box for direct URL input and the **"Discover Candidates..."** button.
 2. **2. Collection & Extraction Options**: Contains the **"Collect Comments"** checkbox, **"Max Comments per Article"** limit entry, and the **"Start Collection"** button.
 3. **3. Collection Progress & Results**: Contains a multi-tab view:
-   - **Collection Progress & Status Log**: Real-time log output and progress status.
-   - **Research Article Results Table**: Interactive table of collected articles with a detailed **Selected Article Inspection Panel**.
+   - **Execution Progress Log**: Real-time log output and progress status.
+   - **Research Article Results**: Interactive table of collected articles with a detailed **Selected Article Inspection Panel**.
    - **Collection Run Summary**: Metrics summary of the collection run.
-4. **4. Generated Dataset Outputs**: Displays default output paths and the **"Export Datasets..."** button.
+   - **Supabase Articles Staging**: Interactive table showing all 14 Supabase `public.articles` schema columns with horizontal/vertical scrolling and an un-truncated row inspection panel.
+   - **Supabase Comments Staging**: Interactive table showing all 5 Supabase `public.comments` schema columns with horizontal/vertical scrolling and an un-truncated row inspection panel.
+4. **4. Generated Dataset Outputs**: Displays default output paths, Supabase staging validation status, **"Open Output Folder"**, and **"Export Supabase CSVs..."** buttons.
 
 ---
 
@@ -214,6 +216,16 @@ Exports a single structured JSON file containing all collected articles, complet
 Exports two relational CSV spreadsheets:
 - **`articles.csv`**: Contains article-level records (title, author, publisher, publication date, cleaned body text, comment status, reported comment count, collected comment count).
 - **`comments.csv`**: Contains individual comment records (comment ID, author name, comment text, timestamp, reaction counts, parent comment ID, depth level). Each comment row contains an `article_url` foreign key linking it back to its parent article in `articles.csv`.
+
+### 3. Supabase Staging Preview & CSV Export (`articles_supabase.csv` & `comments_supabase.csv`)
+Step 28 integrates user-facing Supabase staging preview tabs and export controls into the desktop application GUI:
+- **Preview Tabs**: Switch to **Supabase Articles Staging** (Tab 4) or **Supabase Comments Staging** (Tab 5) to inspect the exact Supabase-shaped table rows before export. Selecting any table row opens its full un-truncated text in the bottom inspection panel.
+- **Validation Status**: Section 4 displays real-time validation status (e.g. valid, warnings, or invalid error details).
+- **Interactive Export**: Click **"Export Supabase CSVs..."** in Section 4 to open a folder dialog and export `articles_supabase.csv` (14 schema columns) and `comments_supabase.csv` (5 schema columns) to any chosen output directory.
+- **Export Gating**: The export button is disabled when validation errors or an empty dataset are present, and enabled when the dataset is valid or contains warnings.
+
+*Important Notes*:
+- Because these Supabase CSV files use temporary negative staging IDs (`-1`, `-2`, ...) for relationship tracking, they are classified as staging/export files for relationship inspection and staging, not direct raw database imports.
 
 Outputs are saved relative to the application working directory in `data/output/` (beside `NewsArticleCollector.exe` when running the executable). You can also click **"Export Datasets..."** in Section 4 to save copies to a custom folder.
 

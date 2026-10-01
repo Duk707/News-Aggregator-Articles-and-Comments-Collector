@@ -28,6 +28,21 @@ from src.gui.validation import (
     format_article_table_row,
     format_article_detail_text
 )
+from src.integrations.supabase import (
+    SupabaseMapper,
+    SupabaseCSVExporter,
+    SupabaseStagingDataset,
+    SupabaseArticleRow,
+    SupabaseCommentRow
+)
+from src.gui.supabase_preview import (
+    SUPABASE_ARTICLE_COLUMNS,
+    SUPABASE_COMMENT_COLUMNS,
+    format_supabase_article_tree_row,
+    format_supabase_comment_tree_row,
+    format_supabase_article_detail,
+    format_supabase_comment_detail
+)
 
 
 class ResizablePanel(ttk.LabelFrame):
@@ -196,6 +211,7 @@ class CollectionApp:
         self.is_collecting = False
         self.worker_thread: Optional[threading.Thread] = None
         self.current_results: List[ExtractionResult] = []
+        self.current_staging_dataset: Optional[SupabaseStagingDataset] = None
         self.resizable_panels: List[ResizablePanel] = []
 
         self._create_widgets()
@@ -320,6 +336,38 @@ class CollectionApp:
             if self.panel_detail.user_req_width is not None:
                 self.panel_results.user_req_width = None
             if self.panel_detail.user_req_height is not None:
+                self.panel_results.user_req_height = None
+        self._update_workspace_geometry()
+
+    def _on_supabase_articles_tree_resize(self):
+        if hasattr(self, "panel_supabase_articles_tree") and hasattr(self, "panel_results"):
+            if self.panel_supabase_articles_tree.user_req_width is not None:
+                self.panel_results.user_req_width = None
+            if self.panel_supabase_articles_tree.user_req_height is not None:
+                self.panel_results.user_req_height = None
+        self._update_workspace_geometry()
+
+    def _on_supabase_article_detail_resize(self):
+        if hasattr(self, "panel_supabase_article_detail") and hasattr(self, "panel_results"):
+            if self.panel_supabase_article_detail.user_req_width is not None:
+                self.panel_results.user_req_width = None
+            if self.panel_supabase_article_detail.user_req_height is not None:
+                self.panel_results.user_req_height = None
+        self._update_workspace_geometry()
+
+    def _on_supabase_comments_tree_resize(self):
+        if hasattr(self, "panel_supabase_comments_tree") and hasattr(self, "panel_results"):
+            if self.panel_supabase_comments_tree.user_req_width is not None:
+                self.panel_results.user_req_width = None
+            if self.panel_supabase_comments_tree.user_req_height is not None:
+                self.panel_results.user_req_height = None
+        self._update_workspace_geometry()
+
+    def _on_supabase_comment_detail_resize(self):
+        if hasattr(self, "panel_supabase_comment_detail") and hasattr(self, "panel_results"):
+            if self.panel_supabase_comment_detail.user_req_width is not None:
+                self.panel_results.user_req_width = None
+            if self.panel_supabase_comment_detail.user_req_height is not None:
                 self.panel_results.user_req_height = None
         self._update_workspace_geometry()
 
@@ -578,6 +626,135 @@ class CollectionApp:
         )
         self.summary_text.pack(fill=tk.BOTH, expand=True)
 
+        # Tab 4: Supabase Articles Staging Preview & Inspection
+        tab_supabase_articles = ttk.Frame(self.notebook)
+        self.notebook.add(tab_supabase_articles, text=" Supabase Articles Staging ")
+
+        self.panel_supabase_articles_tree = ResizablePanel(
+            tab_supabase_articles,
+            text=" Supabase Articles Staging Table (14 Schema Columns) ",
+            min_width=440,
+            min_height=80,
+            on_resize_callback=self._on_supabase_articles_tree_resize
+        )
+        self.panel_supabase_articles_tree.pack(side=tk.TOP, anchor=tk.NW, fill=tk.BOTH, expand=True, pady=(0, 4))
+
+        self.supabase_articles_tree = ttk.Treeview(
+            self.panel_supabase_articles_tree.content_frame,
+            columns=SUPABASE_ARTICLE_COLUMNS,
+            show="headings",
+            selectmode="browse",
+            height=3
+        )
+
+        sup_art_col_configs = [
+            ("id", "ID (Staging)", 80),
+            ("title", "Title", 160),
+            ("content", "Content (Raw)", 150),
+            ("source", "Source", 80),
+            ("created_at", "Created At", 110),
+            ("url", "Canonical URL", 160),
+            ("author", "Author", 90),
+            ("published_date", "Published Date", 110),
+            ("content_hash", "Content Hash", 100),
+            ("clean_content", "Clean Content", 150),
+            ("processing_status", "Proc Status", 85),
+            ("processing_note", "Proc Note", 85),
+            ("processed_at", "Processed At", 85),
+            ("is_relevant", "Is Relevant", 75)
+        ]
+        for col_id, col_name, col_width in sup_art_col_configs:
+            self.supabase_articles_tree.heading(col_id, text=col_name)
+            self.supabase_articles_tree.column(col_id, width=col_width, minwidth=40, stretch=True)
+
+        v_scroll_sa = ttk.Scrollbar(self.panel_supabase_articles_tree.content_frame, orient=tk.VERTICAL, command=self.supabase_articles_tree.yview)
+        h_scroll_sa = ttk.Scrollbar(self.panel_supabase_articles_tree.content_frame, orient=tk.HORIZONTAL, command=self.supabase_articles_tree.xview)
+        self.supabase_articles_tree.configure(yscrollcommand=v_scroll_sa.set, xscrollcommand=h_scroll_sa.set)
+
+        v_scroll_sa.pack(side=tk.RIGHT, fill=tk.Y)
+        h_scroll_sa.pack(side=tk.BOTTOM, fill=tk.X)
+        self.supabase_articles_tree.pack(fill=tk.BOTH, expand=True)
+
+        self.supabase_articles_tree.bind("<<TreeviewSelect>>", self._on_supabase_article_selected)
+
+        self.panel_supabase_article_detail = ResizablePanel(
+            tab_supabase_articles,
+            text=" Selected Supabase Article Row Inspection ",
+            min_width=440,
+            min_height=60,
+            on_resize_callback=self._on_supabase_article_detail_resize
+        )
+        self.panel_supabase_article_detail.pack(side=tk.TOP, anchor=tk.NW, fill=tk.BOTH, expand=True)
+
+        self.supabase_article_detail_text = scrolledtext.ScrolledText(
+            self.panel_supabase_article_detail.content_frame,
+            height=2,
+            wrap=tk.WORD,
+            font=("Consolas", 9),
+            state=tk.DISABLED
+        )
+        self.supabase_article_detail_text.pack(fill=tk.BOTH, expand=True)
+
+        # Tab 5: Supabase Comments Staging Preview & Inspection
+        tab_supabase_comments = ttk.Frame(self.notebook)
+        self.notebook.add(tab_supabase_comments, text=" Supabase Comments Staging ")
+
+        self.panel_supabase_comments_tree = ResizablePanel(
+            tab_supabase_comments,
+            text=" Supabase Comments Staging Table (5 Schema Columns) ",
+            min_width=440,
+            min_height=80,
+            on_resize_callback=self._on_supabase_comments_tree_resize
+        )
+        self.panel_supabase_comments_tree.pack(side=tk.TOP, anchor=tk.NW, fill=tk.BOTH, expand=True, pady=(0, 4))
+
+        self.supabase_comments_tree = ttk.Treeview(
+            self.panel_supabase_comments_tree.content_frame,
+            columns=SUPABASE_COMMENT_COLUMNS,
+            show="headings",
+            selectmode="browse",
+            height=3
+        )
+
+        sup_cm_col_configs = [
+            ("id", "ID (Staging)", 100),
+            ("article_id", "Article ID (Staging)", 120),
+            ("text", "Comment Text", 300),
+            ("created_at", "Created At", 120),
+            ("parent_comment_id", "Parent Comment ID", 120)
+        ]
+        for col_id, col_name, col_width in sup_cm_col_configs:
+            self.supabase_comments_tree.heading(col_id, text=col_name)
+            self.supabase_comments_tree.column(col_id, width=col_width, minwidth=40, stretch=True)
+
+        v_scroll_sc = ttk.Scrollbar(self.panel_supabase_comments_tree.content_frame, orient=tk.VERTICAL, command=self.supabase_comments_tree.yview)
+        h_scroll_sc = ttk.Scrollbar(self.panel_supabase_comments_tree.content_frame, orient=tk.HORIZONTAL, command=self.supabase_comments_tree.xview)
+        self.supabase_comments_tree.configure(yscrollcommand=v_scroll_sc.set, xscrollcommand=h_scroll_sc.set)
+
+        v_scroll_sc.pack(side=tk.RIGHT, fill=tk.Y)
+        h_scroll_sc.pack(side=tk.BOTTOM, fill=tk.X)
+        self.supabase_comments_tree.pack(fill=tk.BOTH, expand=True)
+
+        self.supabase_comments_tree.bind("<<TreeviewSelect>>", self._on_supabase_comment_selected)
+
+        self.panel_supabase_comment_detail = ResizablePanel(
+            tab_supabase_comments,
+            text=" Selected Supabase Comment Row Inspection ",
+            min_width=440,
+            min_height=60,
+            on_resize_callback=self._on_supabase_comment_detail_resize
+        )
+        self.panel_supabase_comment_detail.pack(side=tk.TOP, anchor=tk.NW, fill=tk.BOTH, expand=True)
+
+        self.supabase_comment_detail_text = scrolledtext.ScrolledText(
+            self.panel_supabase_comment_detail.content_frame,
+            height=2,
+            wrap=tk.WORD,
+            font=("Consolas", 9),
+            state=tk.DISABLED
+        )
+        self.supabase_comment_detail_text.pack(fill=tk.BOTH, expand=True)
+
         # ---------------------------------------------------------------------
         # Section 4: Output Access Panel
         # ---------------------------------------------------------------------
@@ -605,7 +782,27 @@ class CollectionApp:
             text="Open Output Folder",
             command=self._on_open_output_folder_clicked
         )
-        btn_open_folder.pack(side=tk.RIGHT)
+        btn_open_folder.pack(side=tk.RIGHT, padx=(4, 0))
+
+        self.btn_export_supabase = ttk.Button(
+            out_layout,
+            text="Export Supabase CSVs...",
+            command=self._on_export_supabase_clicked,
+            state=tk.DISABLED
+        )
+        self.btn_export_supabase.pack(side=tk.RIGHT, padx=(4, 0))
+
+        # Sub-row in Section 4 for Supabase Validation Status
+        sup_status_frame = ttk.Frame(self.panel_output.content_frame)
+        sup_status_frame.pack(fill=tk.X, expand=True, pady=(4, 0))
+
+        self.lbl_supabase_status = ttk.Label(
+            sup_status_frame,
+            text="Supabase Staging Status: Not generated yet",
+            font=("Segoe UI", 9, "italic"),
+            foreground="#555555"
+        )
+        self.lbl_supabase_status.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Register resizable panels for geometry calculations
         self.resizable_panels = [
@@ -614,6 +811,10 @@ class CollectionApp:
             self.panel_results,
             self.panel_tree,
             self.panel_detail,
+            self.panel_supabase_articles_tree,
+            self.panel_supabase_article_detail,
+            self.panel_supabase_comments_tree,
+            self.panel_supabase_comment_detail,
             self.panel_output
         ]
 
@@ -696,6 +897,13 @@ class CollectionApp:
         self._clear_logs()
         self._clear_summary()
         self._populate_results_table([])
+        self.current_staging_dataset = None
+        self._clear_supabase_preview()
+        self.lbl_supabase_status.config(
+            text="Supabase Staging Status: Collection in progress...",
+            foreground="#555555"
+        )
+        self.btn_export_supabase.config(state=tk.DISABLED)
         self.notebook.select(0)  # Switch to logs tab
 
         self._append_log(f"=== Starting Collection Run ===")
@@ -749,12 +957,12 @@ class CollectionApp:
                     progress_callback=progress_cb
                 )
 
-            # Perform Exports
+            # Perform Standard Exports
             out_dir = self.DEFAULT_OUTPUT_DIR
             os.makedirs(out_dir, exist_ok=True)
             json_path = os.path.join(out_dir, "articles.json")
 
-            articles: List[Article] = [r.article for r in results if r.article]
+            articles = [r.article for r in results if r.article]
 
             JSONExporter.export_batch(articles, output_path=json_path)
             csv_paths = CSVExporter.export(articles, output_dir=out_dir)
@@ -768,7 +976,16 @@ class CollectionApp:
             # Generate CollectionSummary
             summary = BatchCollector.create_summary(results, output_files=output_files, topic_query=topic_query)
 
-            self.queue.put(("COMPLETE", results, summary, output_files))
+            # Supabase Staging Layer Execution (Additive & Isolated)
+            staging_dataset = None
+            staging_error = None
+            if articles:
+                try:
+                    staging_dataset = SupabaseMapper.build_staging_dataset(articles)
+                except Exception as stg_err:
+                    staging_error = str(stg_err)
+
+            self.queue.put(("COMPLETE", results, summary, output_files, staging_dataset, staging_error))
 
         except Exception as e:
             self.queue.put(("ERROR", str(e)))
@@ -793,7 +1010,13 @@ class CollectionApp:
                     self.lbl_status.config(text=f"Status: Processing URL {index} of {total}...")
 
                 elif msg_type == "COMPLETE":
-                    _, results, summary, output_files = msg
+                    if len(msg) >= 6:
+                        _, results, summary, output_files, staging_dataset, staging_error = msg
+                    else:
+                        _, results, summary, output_files = msg
+                        staging_dataset = None
+                        staging_error = None
+
                     self.progress_bar["value"] = self.progress_bar["maximum"]
                     self.lbl_status.config(text=f"Status: Collection Complete! ({len(results)} processed)")
                     self._append_log(f"\n=== Collection Run Finished ===")
@@ -809,6 +1032,9 @@ class CollectionApp:
                              f"• {output_files['articles_csv']}\n"
                              f"• {output_files['comments_csv']}"
                     )
+
+                    # Update Supabase Staging UI State
+                    self._handle_supabase_staging_complete(staging_dataset, staging_error)
 
                     self.is_collecting = False
                     self.btn_start.config(state=tk.NORMAL)
@@ -899,6 +1125,208 @@ class CollectionApp:
         self.detail_text.config(state=tk.NORMAL)
         self.detail_text.delete("1.0", tk.END)
         self.detail_text.config(state=tk.DISABLED)
+
+    # -------------------------------------------------------------------------
+    # Supabase Staging Preview & Export Helpers
+    # -------------------------------------------------------------------------
+    def _handle_supabase_staging_complete(
+        self,
+        staging_dataset: Optional[SupabaseStagingDataset],
+        staging_error: Optional[str]
+    ):
+        """
+        Handles post-collection Supabase staging state update on the main thread.
+        Isolates staging state updates so failures do not affect standard collection output.
+        """
+        if staging_error:
+            self.current_staging_dataset = None
+            self._clear_supabase_preview()
+            self.lbl_supabase_status.config(
+                text=f"Supabase Staging Error: {staging_error}",
+                foreground="red"
+            )
+            self.btn_export_supabase.config(state=tk.DISABLED)
+            self._append_log(f"[SUPABASE STAGING ERROR]: {staging_error}")
+
+        elif staging_dataset:
+            self.current_staging_dataset = staging_dataset
+            self._populate_supabase_preview(staging_dataset)
+
+            errors = staging_dataset.validation_errors
+            warnings = staging_dataset.validation_warnings
+
+            if errors:
+                self.lbl_supabase_status.config(
+                    text=f"Supabase Staging Invalid: {len(errors)} error(s), {len(warnings)} warning(s)",
+                    foreground="red"
+                )
+                self.btn_export_supabase.config(state=tk.DISABLED)
+                self._append_log(f"[SUPABASE STAGING INVALID]: {len(errors)} error(s) prevent Supabase export.")
+                for err in errors:
+                    self._append_log(f"  • [ERROR] {err}")
+            else:
+                art_cnt = len(staging_dataset.articles)
+                cm_cnt = len(staging_dataset.comments)
+                if warnings:
+                    self.lbl_supabase_status.config(
+                        text=f"Supabase Staging Ready: {art_cnt} article(s), {cm_cnt} comment(s) ({len(warnings)} warning(s))",
+                        foreground="#b86b00"
+                    )
+                    self._append_log(f"[SUPABASE STAGING READY]: Staging dataset built with {len(warnings)} warning(s). Export enabled.")
+                    for w in warnings:
+                        self._append_log(f"  • [WARNING] {w}")
+                else:
+                    self.lbl_supabase_status.config(
+                        text=f"Supabase Staging Ready: {art_cnt} article(s), {cm_cnt} comment(s) (Valid)",
+                        foreground="green"
+                    )
+                    self._append_log(f"[SUPABASE STAGING READY]: Staging dataset valid ({art_cnt} articles, {cm_cnt} comments). Export enabled.")
+
+                self.btn_export_supabase.config(state=tk.NORMAL)
+
+        else:
+            self.current_staging_dataset = None
+            self._clear_supabase_preview()
+            self.lbl_supabase_status.config(
+                text="Supabase Staging Status: No articles collected.",
+                foreground="#555555"
+            )
+            self.btn_export_supabase.config(state=tk.DISABLED)
+
+    def _populate_supabase_preview(self, dataset: SupabaseStagingDataset):
+        """
+        Populates both Supabase preview treeviews (Articles and Comments) and selects first row if present.
+        """
+        # Populate Articles Treeview
+        for item in self.supabase_articles_tree.get_children():
+            self.supabase_articles_tree.delete(item)
+
+        for i, row in enumerate(dataset.articles):
+            vals = format_supabase_article_tree_row(row)
+            self.supabase_articles_tree.insert("", tk.END, iid=str(i), values=vals)
+
+        if dataset.articles:
+            first_art = self.supabase_articles_tree.get_children()[0]
+            self.supabase_articles_tree.selection_set(first_art)
+            self.supabase_articles_tree.focus(first_art)
+            self._on_supabase_article_selected(None)
+        else:
+            self._clear_supabase_article_detail()
+
+        # Populate Comments Treeview
+        for item in self.supabase_comments_tree.get_children():
+            self.supabase_comments_tree.delete(item)
+
+        for i, row in enumerate(dataset.comments):
+            vals = format_supabase_comment_tree_row(row)
+            self.supabase_comments_tree.insert("", tk.END, iid=str(i), values=vals)
+
+        if dataset.comments:
+            first_cm = self.supabase_comments_tree.get_children()[0]
+            self.supabase_comments_tree.selection_set(first_cm)
+            self.supabase_comments_tree.focus(first_cm)
+            self._on_supabase_comment_selected(None)
+        else:
+            self._clear_supabase_comment_detail()
+
+    def _clear_supabase_preview(self):
+        """Clears both Supabase preview treeviews and detail panes."""
+        for item in self.supabase_articles_tree.get_children():
+            self.supabase_articles_tree.delete(item)
+        for item in self.supabase_comments_tree.get_children():
+            self.supabase_comments_tree.delete(item)
+        self._clear_supabase_article_detail()
+        self._clear_supabase_comment_detail()
+
+    def _on_supabase_article_selected(self, event=None):
+        """Event handler for Supabase Article treeview row selection."""
+        if not self.current_staging_dataset:
+            self._clear_supabase_article_detail()
+            return
+        selected = self.supabase_articles_tree.selection()
+        if not selected:
+            self._clear_supabase_article_detail()
+            return
+        try:
+            idx = int(selected[0])
+            if 0 <= idx < len(self.current_staging_dataset.articles):
+                row = self.current_staging_dataset.articles[idx]
+                detail_str = format_supabase_article_detail(row)
+                self.supabase_article_detail_text.config(state=tk.NORMAL)
+                self.supabase_article_detail_text.delete("1.0", tk.END)
+                self.supabase_article_detail_text.insert(tk.END, detail_str)
+                self.supabase_article_detail_text.config(state=tk.DISABLED)
+        except (ValueError, IndexError):
+            self._clear_supabase_article_detail()
+
+    def _clear_supabase_article_detail(self):
+        """Clears the Supabase Article detail inspection pane."""
+        self.supabase_article_detail_text.config(state=tk.NORMAL)
+        self.supabase_article_detail_text.delete("1.0", tk.END)
+        self.supabase_article_detail_text.config(state=tk.DISABLED)
+
+    def _on_supabase_comment_selected(self, event=None):
+        """Event handler for Supabase Comment treeview row selection."""
+        if not self.current_staging_dataset:
+            self._clear_supabase_comment_detail()
+            return
+        selected = self.supabase_comments_tree.selection()
+        if not selected:
+            self._clear_supabase_comment_detail()
+            return
+        try:
+            idx = int(selected[0])
+            if 0 <= idx < len(self.current_staging_dataset.comments):
+                row = self.current_staging_dataset.comments[idx]
+                detail_str = format_supabase_comment_detail(row)
+                self.supabase_comment_detail_text.config(state=tk.NORMAL)
+                self.supabase_comment_detail_text.delete("1.0", tk.END)
+                self.supabase_comment_detail_text.insert(tk.END, detail_str)
+                self.supabase_comment_detail_text.config(state=tk.DISABLED)
+        except (ValueError, IndexError):
+            self._clear_supabase_comment_detail()
+
+    def _clear_supabase_comment_detail(self):
+        """Clears the Supabase Comment detail inspection pane."""
+        self.supabase_comment_detail_text.config(state=tk.NORMAL)
+        self.supabase_comment_detail_text.delete("1.0", tk.END)
+        self.supabase_comment_detail_text.config(state=tk.DISABLED)
+
+    def _on_export_supabase_clicked(self):
+        """
+        Prompts user for export directory and exports current SupabaseStagingDataset to articles_supabase.csv and comments_supabase.csv.
+        """
+        if not self.current_staging_dataset or self.current_staging_dataset.validation_errors:
+            messagebox.showwarning(
+                "Export Unavailable",
+                "Cannot export Supabase staging CSVs because the staging dataset is missing or contains validation errors."
+            )
+            return
+
+        target_dir = filedialog.askdirectory(
+            title="Select Output Folder for Supabase Staging CSVs",
+            initialdir=os.path.abspath(self.DEFAULT_OUTPUT_DIR)
+        )
+        if not target_dir:
+            return
+
+        try:
+            paths = SupabaseCSVExporter.export(self.current_staging_dataset, output_dir=target_dir)
+            art_csv = paths.get("articles_csv", "")
+            cm_csv = paths.get("comments_csv", "")
+            self._append_log(f"\n[SUPABASE EXPORT SUCCESSFUL]:")
+            self._append_log(f"  • Articles Staging CSV: {art_csv}")
+            self._append_log(f"  • Comments Staging CSV: {cm_csv}")
+
+            messagebox.showinfo(
+                "Supabase Export Successful",
+                f"Successfully exported Supabase staging CSVs to:\n\n"
+                f"Articles: {art_csv}\n"
+                f"Comments: {cm_csv}"
+            )
+        except Exception as e:
+            self._append_log(f"[SUPABASE EXPORT ERROR]: Failed to write CSV files: {str(e)}")
+            messagebox.showerror("Export Failed", f"An error occurred while exporting Supabase staging CSVs:\n\n{str(e)}")
 
     def _on_discover_candidates_clicked(self):
         """Opens the Candidate Article Discovery dialog."""

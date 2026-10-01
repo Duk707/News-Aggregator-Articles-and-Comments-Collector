@@ -29,8 +29,8 @@ important than maximizing the number of collected records.
     - Tests executed and verification results
     - Any limitations, edge cases, or issues
     - What the next step will add
-2b. Mandatory Pre-Implementation Approval Gate for Remaining Steps (Steps 21–26):
-    Steps 1–20 are completed. For all remaining build steps (Steps 21–26), follow a strict two-gate approval workflow:
+2b. Mandatory Pre-Implementation Approval Gate for Remaining and Subsequent Steps (Step 27 and all subsequent new build steps):
+    Steps 1–26 are completed. For Step 27 and all subsequent new build steps, follow a strict two-gate approval workflow:
     - **Gate 1 (Pre-Implementation Plan & Approval)**:
       1. Review `AGENTS.md`, `PLAN.md`, `BUILD_STEPS.md`, and the relevant existing implementation.
       2. Produce a concise implementation plan before making any implementation changes. The plan must identify:

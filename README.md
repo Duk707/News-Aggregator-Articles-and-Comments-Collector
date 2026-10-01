@@ -14,7 +14,8 @@ This research prototype supports an engineering design project focusing on **AI 
 - **Full Article Extraction**: Standardized extraction of article titles, authors, publication dates, canonical URLs, and cleaned article text (free of site boilerplate).
 - **Public Comment Extraction**: Automated extraction of top-level comments and nested replies from supported Yahoo News and MSN articles.
 - **Rich Comment Status Classification**: Distinguishes between articles with no comments (`NONE_PRESENT`), disabled comments (`DISABLED`), available comments (`AVAILABLE`), and inaccessible comments (`LOGIN_REQUIRED`, `NOT_LOADED`, `BLOCKED`, `EXTRACTION_ERROR`).
-- **Data Export**: Export collected datasets into nested JSON files or tabular CSV files (`articles.csv` and `comments.csv`).
+- **Data Export**: Export collected datasets into nested JSON files, standard CSV files (`articles.csv` and `comments.csv`), or Supabase staging CSV files (`articles_supabase.csv` and `comments_supabase.csv`).
+- **Supabase Staging Preview**: GUI preview tabs for inspecting 14-column Supabase articles staging rows and 5-column Supabase comments staging rows with detail row inspection panels.
 - **Diagnostic Logging**: Automated snapshot recording of HTML structures and extraction errors in `data/diagnostics/`.
 
 ---
@@ -70,11 +71,13 @@ python main.py
 
 ## Outputs Overview
 
-Collected datasets are automatically written to `data/output/`:
+Standard collection runs automatically generate datasets in `data/output/`:
 
 - **`articles.json`**: Complete nested dataset containing articles and their associated comment trees.
 - **`articles.csv`**: Tabular dataset containing article metadata, URLs, publication dates, and summary metrics.
 - **`comments.csv`**: Tabular dataset containing individual comments and replies, linked to parent articles via `article_url`.
+
+*Note on Supabase Staging Preview & Exports*: Step 28 added interactive GUI preview tabs (Tabs 4 & 5) and the **"Export Supabase CSVs..."** button, enabling previewing and custom folder export of `articles_supabase.csv` and `comments_supabase.csv` (using temporary negative staging IDs for relationship tracking).
 
 ---
 
@@ -98,6 +101,8 @@ For detailed guides and technical specifications, refer to:
 │   ├── export/                # JSON and CSV export generators
 │   ├── extraction/            # Article text, comment, and metadata extraction routines
 │   ├── gui/                   # Desktop graphical user interface (Tkinter / TTK)
+│   ├── integrations/          # External integrations (Supabase compatibility & staging layer)
+│   │   └── supabase/          # Supabase models, mapper, validator, and staging exporter
 │   ├── models/                # Dataclass models (Article, Comment, CandidateArticle, etc.)
 │   └── utils/                 # URL validation and helper functions
 ├── tests/                     # Automated unit and integration test suite (with fixtures)

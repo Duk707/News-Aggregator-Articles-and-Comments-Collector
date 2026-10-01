@@ -8,7 +8,7 @@ end-of-step walkthrough (files created/modified, purpose, functionality, key cod
 integration context, tests/results, limitations/issues, and next step preview),
 and wait for approval before continuing unless explicitly instructed otherwise.
 
-For remaining build steps (Steps 21–26), a mandatory pre-implementation approval gate also applies before starting implementation (see the Workflow section before Step 21).
+Steps 1–26 are completed. For Step 27 and all subsequent new build steps, a mandatory two-gate pre-implementation approval workflow applies (see the Workflow section before Step 27).
 
 ------------------------------------------------------------------------
 
@@ -331,9 +331,9 @@ collection.
 
 ------------------------------------------------------------------------
 
-## Mandatory Pre-Implementation Approval Workflow (Steps 21–26)
+## Mandatory Pre-Implementation Approval Workflow (Step 27 and Subsequent Steps)
 
-Steps 1–20 are completed. For all remaining build steps (Steps 21–26), the coding agent must execute a mandatory two-gate approval workflow:
+Steps 1–26 are completed historical implementation milestones. For Step 27 and all subsequent new build steps, the coding agent must execute a mandatory two-gate approval workflow:
 
 1. **Review**: Review `AGENTS.md`, `PLAN.md`, `BUILD_STEPS.md`, and the relevant existing implementation.
 2. **Implementation Plan**: Produce a concise implementation plan before making any implementation changes. The plan must identify:
@@ -427,12 +427,58 @@ findings; - MSN findings.
 
 ------------------------------------------------------------------------
 
+## Phase 11 - Supabase Database Integration & Staging
+
+### Step 27 - Supabase Compatibility & Staging Layer
+
+Implement `src/integrations/supabase/` compatibility and staging layer:
+- `SupabaseArticleRow` and `SupabaseCommentRow` row models matching Supabase table schemas.
+- `SupabaseMapper` converting collector Article/Comment objects into Supabase rows.
+- Two-pass comment mapping with article-local parent resolution and structural parent fallback.
+- Continuous globally unique negative integer comment staging IDs across the entire dataset.
+- Article-scoped duplicate source comment ID collision detection.
+- SHA-256 content hashing (`compute_content_hash()`).
+- Omission rules for database defaults (`created_at`, `is_relevant`) vs nullable AI fields (`processing_*`).
+- `SupabaseValidator` enforcing unique indexes (`articles_url_unique_idx`, `articles_content_hash_unique_idx`).
+- `SupabaseCSVExporter` writing `articles_supabase.csv` and `comments_supabase.csv`.
+
+Acceptance:
+- Unit tests pass with zero network calls or live database access.
+- Local mapping preserves rich collector objects while creating Supabase-compatible staging rows.
+
+------------------------------------------------------------------------
+
+### Step 28 - Supabase Preview & Export UI
+
+Integrated the Supabase staging layer into the desktop application GUI (`src/gui/app.py` & `src/gui/supabase_preview.py`):
+- Tab 4: "Supabase Articles Staging" Treeview table showing all 14 schema columns (`id`, `title`, `content`, `source`, `created_at`, `url`, `author`, `published_date`, `content_hash`, `clean_content`, `processing_status`, `processing_note`, `processed_at`, `is_relevant`) with vertical/horizontal scrolling and full un-truncated text detail panel.
+- Tab 5: "Supabase Comments Staging" Treeview table showing all 5 schema columns (`id`, `article_id`, `text`, `created_at`, `parent_comment_id`) with vertical/horizontal scrolling and full un-truncated text detail panel.
+- Validation Summary Panel and "Export Supabase CSVs..." button gated by staging validation status (disabled on errors/empty, enabled on valid/warnings).
+- Thread-safe worker staging dataset generation (`SupabaseMapper.build_staging_dataset()`).
+- Additive isolation: staging errors or export failures do not affect standard collection, summary, or JSON/CSV exports.
+- Custom output directory file dialog prompt for export.
+- Automatic state reset on new collection run.
+
+Acceptance:
+- Unit and integration tests pass with zero live database or network calls (`tests/test_gui_supabase_preview.py`).
+
+------------------------------------------------------------------------
+
+### Step 29 - Direct Supabase Upload (Future Step)
+
+Implement dry-run validation and optional PostgREST/Supabase REST upload using project credentials.
+
+------------------------------------------------------------------------
+
+### Step 30 - Supabase Integration Verification (Future Step)
+
+Verify end-to-end integration using mock/fake PostgREST test responses. If a real database smoke test is explicitly opted-in by configuration, execute a minimal smoke test (1 article, 1 top-level comment, 1 reply) against the shared database without table-wide deletions.
+
+------------------------------------------------------------------------
+
 ## Future Backlog - Do Not Build Yet
 
-Potential later work: - additional news-site adapters; - database
-storage; - scheduler; - API/service layer; - NLP/sentiment analysis; -
-source health monitoring; - plugin-based adapter registration; -
-integration with the larger multi-agent AI-in-Education system.
+Potential later work: - additional news-site adapters; - scheduler; - API/service layer; - NLP/sentiment analysis; - source health monitoring; - plugin-based adapter registration; - integration with the larger multi-agent AI-in-Education system (Note: Supabase database staging and upload is active in Phase 11 / Steps 27–30).
 
 Do not add these until the Yahoo/MSN prototype is validated.
 

@@ -47,8 +47,7 @@ large-scale/high-frequency collection; - AI sentiment analysis; -
 database infrastructure; - cloud deployment; - a complex multi-agent
 architecture.
 
-These can be evaluated separately if the project's requirements later
-justify them.
+These were Non-Goals for the initial prototype (Steps 1–26). Following prototype completion, Supabase compatibility and database integration was promoted into the active post-prototype roadmap starting at Step 27.
 
 ## 5. High-Level Architecture
 
@@ -86,10 +85,19 @@ justify them.
     | Validation & Diagnostics  |
     +-------------+-------------+
                   |
-                  v
-    +---------------------------+
-    | JSON / CSV Export         |
-    +---------------------------+
+          +-------+-------+
+          |               |
+          v               v
+    +-----------+   +-------------------------------+
+    | Standard  |   | Supabase Staging Layer        |
+    | JSON/CSV  |   | (src/integrations/supabase/)  |
+    | Export    |   +---------------+---------------+
+    +-----------+                   |
+                                    v
+                    +-------------------------------+
+                    | Staging Preview / CSV Export  |
+                    | & Direct Supabase Upload      |
+                    +-------------------------------+
 
 ## 6. Proposed Project Structure
 
@@ -128,6 +136,13 @@ justify them.
     |   |-- export/
     |   |   |-- json_exporter.py
     |   |   `-- csv_exporter.py
+    |   |
+    |   |-- integrations/
+    |   |   `-- supabase/
+    |   |       |-- models.py
+    |   |       |-- mapper.py
+    |   |       |-- validation.py
+    |   |       `-- exporter.py
     |   |
     |   `-- utils/
     |       |-- logging.py
@@ -356,9 +371,6 @@ This turns failed collection attempts into useful engineering evidence.
 
 ## 16. Future Extensions
 
-After Yahoo and MSN: - additional adapters; - database storage; -
-scheduler; - article discovery APIs; - source health checks; -
-configurable collection policies; - NLP/sentiment/topic analysis; -
-integration into the larger AI-in-Education multi-agent system.
+After Yahoo and MSN: - additional adapters; - scheduler; - article discovery APIs; - source health checks; - configurable collection policies; - NLP/sentiment/topic analysis; - integration into the larger AI-in-Education multi-agent system.
 
-These are future extensions, not requirements for the first prototype.
+*(Note: Supabase database staging and upload integration was promoted into active development under Phase 11 / Steps 27–30).*
