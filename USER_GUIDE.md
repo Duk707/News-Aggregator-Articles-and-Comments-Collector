@@ -224,10 +224,18 @@ Step 28 integrates user-facing Supabase staging preview tabs and export controls
 - **Interactive Export**: Click **"Export Supabase CSVs..."** in Section 4 to open a folder dialog and export `articles_supabase.csv` (14 schema columns) and `comments_supabase.csv` (5 schema columns) to any chosen output directory.
 - **Export Gating**: The export button is disabled when validation errors or an empty dataset are present, and enabled when the dataset is valid or contains warnings.
 
-*Important Notes*:
-- Because these Supabase CSV files use temporary negative staging IDs (`-1`, `-2`, ...) for relationship tracking, they are classified as staging/export files for relationship inspection and staging, not direct raw database imports.
+### 4. Direct Supabase Database Upload ("Upload to Supabase...")
+Step 29 adds an optional direct database upload feature in Section 4:
+- **Status**: **COMPLETE and MOCK-VERIFIED** (Live integration verification is **DEFERRED — awaiting Supabase project connection information and verification of applicable RLS behavior**).
+- **"Upload to Supabase..." Button**: Enabled when a valid Supabase staging dataset is previewed in Section 3.
+- **Connection & Credentials Dialog**: Enter your public Supabase Project URL (`https://<ref>.supabase.co`) and Publishable/Anon Key. Credentials can be optionally saved locally to `data/config/supabase_client_config.json` (git-ignored).
+- **Zero Service Role Key & Memory-Only Auth**: Never uses or requests a `service_role` key. Optional user email/password authentication holds JWT access tokens strictly in memory without saving passwords or tokens to disk.
+- **Read-Only Dry Run**: Click **"Run Read-Only Dry Run"** to verify connection, API key validity, active session role, read visibility, and Article conflict Cases A-D prior to any database write. The dry run makes zero write requests (0 POSTs) and explicitly displays: `Write permission (INSERT) unverified until live upload`.
+- **User-Only Execution Policy**: Antigravity performs zero live Supabase reads or writes. The user personally performs the first real Supabase dry run/authentication test and all first real database writes.
+- **Database Identity Translation**: Automatically converts temporary negative staging IDs (`-1`, `-101`) to real positive database IDs (`1001`, `5001`), omits missing `None` fields so database defaults (`now()`, `true`) apply, and inserts nested comment replies in topological order using real parent comment IDs.
+- **Post-Upload Summary Report**: Upon completion, a summary modal displays total articles/comments inserted, linked, skipped, or failed, alongside detailed audit record logs.
 
-Outputs are saved relative to the application working directory in `data/output/` (beside `NewsArticleCollector.exe` when running the executable). You can also click **"Export Datasets..."** in Section 4 to save copies to a custom folder.
+Outputs are saved relative to the application working directory in `data/output/` (beside `NewsArticleCollector.exe` when running the executable). You can also click **"Open Output Folder"** in Section 4 to open the destination folder.
 
 ---
 

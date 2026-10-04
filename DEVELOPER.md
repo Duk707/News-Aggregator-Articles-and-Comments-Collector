@@ -316,6 +316,31 @@ Step 28 integrates the Supabase staging dataset directly into the desktop GUI pr
 - **Additive Worker Thread Execution**: Staging creation occurs on the worker thread following standard collection and standard JSON/CSV export. If Supabase staging fails, the exception is caught, logged, and reported on the UI thread without interrupting or suppressing standard collection results, logs, or standard CSV/JSON output.
 - **Custom Directory Export Prompt**: Clicking "Export Supabase CSVs..." prompts the user with a directory selection dialog (`filedialog.askdirectory`), enabling destination folder customization.
 
+### Direct Supabase Upload Architecture (`src/integrations/supabase/uploader.py` & `src/gui/supabase_upload.py`)
+
+Step 29 provides a secure, optional direct upload path from the previewed `SupabaseStagingDataset` into Supabase `public.articles` and `public.comments` tables:
+
+- **Implementation Status**: **COMPLETE and MOCK-VERIFIED**.
+- **Live Supabase Integration Verification**: **DEFERRED — awaiting Supabase project connection information and verification of applicable RLS behavior.** (This is an unavailable external prerequisite, not a Step 29 implementation failure).
+- **Client-Safe Credentials & Security**: Connection settings (`SupabaseClientConfig`, `load_supabase_config`, `save_supabase_client_config`) accept public project URL and Publishable/Anon Key stored in `data/config/supabase_client_config.json` (git-ignored). Uses zero `service_role` keys. Optional user authentication (`authenticate_user`, `login`) holds JWT access tokens strictly in memory without disk persistence.
+- **HTTP Client Wrapper (`SupabaseClient`)**: Executes REST queries against PostgREST (`/rest/v1/articles`, `/rest/v1/comments`) using standard `requests` library. Enforces headers (`apikey`, `Authorization: Bearer <token>`, `Prefer: return=representation`) and handles status codes (201, 401, 403, 409, 429, 500).
+- **Read-Only Pre-Upload Dry Run (`SupabaseUploader.run_dry_run()`)**: Performs read-only GET queries prior to any database write. Guarantees ZERO write calls (POST/PATCH/DELETE). Classifies articles into Cases A-D:
+  - **Case A**: URL & content hash do not exist in DB -> Queued as new insert.
+  - **Case B**: URL & content hash match same existing DB row -> Staging ID mapped to existing DB ID; 0 article inserts required.
+  - **Case C**: URL matches but content hash differs -> Partial conflict warning; new insert prohibited (prevents unique constraint crash); user must explicitly link or skip.
+  - **Case D**: URL matches DB row 1, content hash matches DB row 2 -> Ambiguous conflict; article upload blocked; comments skipped.
+  - Output explicitly labels `Write permission (INSERT) unverified until live upload authorization check`.
+- **Real Database ID Translation & Payload Omission (`execute_upload()`)**:
+  - Reuses exact `self.current_staging_dataset` previewed in Step 28.
+  - Converts temporary negative staging IDs (`-1`, `-101`) to returned positive database IDs (`1001`, `5001`) via `staging_article_id_map` and `staging_comment_id_map`.
+  - Omits `None` fields (`created_at`, `is_relevant`) so PostgreSQL defaults (`now()`, `true`) apply.
+- **Topological Level-Order Comment Reply Insertion**: Root comments (`parent_comment_id is None`) are inserted first. Real parent comment IDs returned by PostgREST are captured into `staging_comment_id_map`. Child reply comments are then inserted in level order using translated positive `parent_comment_id` values.
+- **Granular Record Result & UNKNOWN_OUTCOME Tracking**: Each record produces an `UploadRecordResult`. Network timeouts or dropped sockets during POST record `UNKNOWN_OUTCOME` state for the record without crashing the pipeline. 401/403 RLS permission errors are logged per record.
+- **Interactive GUI Upload Dialogs (`src/gui/supabase_upload.py`)**:
+  - `SupabaseUploadDialog`: Connection settings, key visibility toggle, in-memory user login, "Run Read-Only Dry Run" button, diagnostic results rendering, and "Upload Dataset (INSERT)" button with explicit user confirmation.
+  - `SupabaseUploadSummaryDialog`: Modal summary window displaying execution counters, record audit logs, ID translation maps, and error details.
+- **Strict Execution Rules**: Antigravity performs zero live Supabase reads or writes. The user personally performs the first real Supabase dry run/authentication test and all first real database writes.
+
 ---
 
 ## Documentation Links

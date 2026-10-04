@@ -464,15 +464,49 @@ Acceptance:
 
 ------------------------------------------------------------------------
 
-### Step 29 - Direct Supabase Upload (Future Step)
+### Step 29 - Direct Supabase Upload
 
-Implement dry-run validation and optional PostgREST/Supabase REST upload using project credentials.
+Implemented secure, optional dataset upload from previewed `SupabaseStagingDataset` into Supabase `public.articles` and `public.comments` tables:
+- **Implementation Status**: **COMPLETE and MOCK-VERIFIED**.
+- **Live Supabase Integration Verification**: **DEFERRED — awaiting Supabase project connection information and verification of applicable RLS behavior.** (This is an unavailable external prerequisite, not a Step 29 implementation failure).
+- Connection & credential management model (`SupabaseClientConfig`, `load_supabase_config`, `save_supabase_client_config`) storing only public URL and Publishable/Anon Key in `data/config/supabase_client_config.json` (git-ignored).
+- Zero `service_role` key policy; optional interactive user authentication (`authenticate_user`, `login`) holding JWT access tokens strictly in memory without disk persistence.
+- PostgREST HTTP client wrapper (`SupabaseClient`) using `requests` with standard headers (`apikey`, `Authorization`, `Prefer: return=representation`) and HTTP status handling (201, 401, 403, 409, 429, 500).
+- Read-only pre-upload dry run engine (`SupabaseUploader.run_dry_run()`) guaranteeing ZERO write calls (POST/PATCH/DELETE), evaluating connectivity, API key, active role, read visibility, Article conflict Cases A-D, and duplicate comment checks, explicitly labeling `Write permission (INSERT) unverified until live upload`.
+- Sequential database insertion pipeline (`execute_upload()`) executing outside Tkinter main loop on worker thread:
+  - Reuses exact `self.current_staging_dataset` from Step 28.
+  - Translates temporary negative staging IDs (`-1`, `-101`) to returned positive database IDs (`1001`, `5001`) via `staging_article_id_map` and `staging_comment_id_map`.
+  - Omits `None` fields (`created_at`, `is_relevant`) so database defaults (`now()`, `true`) apply.
+  - Topologically sorts comment reply insertion so parent comments exist before child replies are inserted with real `parent_comment_id`.
+  - Granular per-record tracking (`UploadRecordResult`, `UploadExecutionSummary`) including `UNKNOWN_OUTCOME` for timeouts.
+- Interactive modal UI dialogs (`SupabaseUploadDialog`, `SupabaseUploadSummaryDialog`) launched from Section 4 "Upload to Supabase..." button with explicit user confirmation before any database write.
+- Antigravity performs zero live Supabase reads or writes. The user personally performs the first real Supabase dry run/authentication test and all first real database writes.
+
+Acceptance & Verification:
+- 100% of unit tests pass with zero live network requests or database access (`tests/test_supabase_uploader.py`).
+- Complete project test suite passes cleanly (**159 passed** across all 26 test modules).
 
 ------------------------------------------------------------------------
 
-### Step 30 - Supabase Integration Verification (Future Step)
+### Step 30 — Additional Public Article & Comment Source Support
 
-Verify end-to-end integration using mock/fake PostgREST test responses. If a real database smoke test is explicitly opted-in by configuration, execute a minimal smoke test (1 article, 1 top-level comment, 1 reply) against the shared database without table-wide deletions.
+Expand collection beyond Yahoo and MSN using additional sources that actually provide publicly readable comments, discussions, questions, ideas, or responses:
+- Yahoo and MSN are frozen for Step 30 and must not be modified.
+- The three traditional government sources from Christopher's research that do not provide public comments are NOT implementation targets for Step 30.
+- Investigate scalable local-government/public-institution support through civic-engagement platform families:
+  - EngagementHQ / Engage
+  - Granicus eComment / Legistar
+  - OpenGov / Open Town Hall
+- The goal for local-government support is platform-level detection and adapters where feasible, rather than one adapter per city or county.
+- Detailed implementation scope will be determined during Step 30 Gate 1 planning.
+
+------------------------------------------------------------------------
+
+### Step 31 — Supabase Integration Verification
+
+Verify Step 29 only after the required Supabase project configuration and RLS information become available:
+- All live Supabase interactions are performed manually by the user.
+- Antigravity may analyze observed results, correct implementation defects, and run mock-only regression tests, but must not independently execute live Supabase reads or writes.
 
 ------------------------------------------------------------------------
 

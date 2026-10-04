@@ -33,7 +33,9 @@ from src.integrations.supabase import (
     SupabaseCSVExporter,
     SupabaseStagingDataset,
     SupabaseArticleRow,
-    SupabaseCommentRow
+    SupabaseCommentRow,
+    SupabaseClient,
+    SupabaseUploader
 )
 from src.gui.supabase_preview import (
     SUPABASE_ARTICLE_COLUMNS,
@@ -43,6 +45,7 @@ from src.gui.supabase_preview import (
     format_supabase_article_detail,
     format_supabase_comment_detail
 )
+from src.gui.supabase_upload import SupabaseUploadDialog, SupabaseUploadSummaryDialog
 
 
 class ResizablePanel(ttk.LabelFrame):
@@ -792,6 +795,14 @@ class CollectionApp:
         )
         self.btn_export_supabase.pack(side=tk.RIGHT, padx=(4, 0))
 
+        self.btn_upload_supabase = ttk.Button(
+            out_layout,
+            text="Upload to Supabase...",
+            command=self._on_upload_supabase_clicked,
+            state=tk.DISABLED
+        )
+        self.btn_upload_supabase.pack(side=tk.RIGHT, padx=(4, 0))
+
         # Sub-row in Section 4 for Supabase Validation Status
         sup_status_frame = ttk.Frame(self.panel_output.content_frame)
         sup_status_frame.pack(fill=tk.X, expand=True, pady=(4, 0))
@@ -1050,6 +1061,23 @@ class CollectionApp:
                     self.btn_start.config(state=tk.NORMAL)
                     return
 
+                elif msg_type == "SUPABASE_UPLOAD_COMPLETE":
+                    _, summary = msg
+                    self.btn_upload_supabase.config(state=tk.NORMAL)
+                    status_text = "Supabase Upload Complete (Success)" if summary.success else "Supabase Upload Completed with Issues"
+                    color = "green" if summary.success else "#b86b00"
+                    self.lbl_supabase_status.config(text=f"Supabase Upload: {status_text}", foreground=color)
+                    self._append_log(f"\n[SUPABASE UPLOAD COMPLETE]: {status_text}")
+
+                    SupabaseUploadSummaryDialog(parent=self.root, summary=summary)
+
+                elif msg_type == "SUPABASE_UPLOAD_ERROR":
+                    _, err_text = msg
+                    self.btn_upload_supabase.config(state=tk.NORMAL)
+                    self.lbl_supabase_status.config(text=f"Supabase Upload Failed: {err_text}", foreground="red")
+                    self._append_log(f"\n[SUPABASE UPLOAD ERROR]: {err_text}")
+                    messagebox.showerror("Upload Error", f"An error occurred during Supabase upload:\n{err_text}")
+
         except queue.Empty:
             pass
 
@@ -1146,6 +1174,7 @@ class CollectionApp:
                 foreground="red"
             )
             self.btn_export_supabase.config(state=tk.DISABLED)
+            self.btn_upload_supabase.config(state=tk.DISABLED)
             self._append_log(f"[SUPABASE STAGING ERROR]: {staging_error}")
 
         elif staging_dataset:
@@ -1161,6 +1190,7 @@ class CollectionApp:
                     foreground="red"
                 )
                 self.btn_export_supabase.config(state=tk.DISABLED)
+                self.btn_upload_supabase.config(state=tk.DISABLED)
                 self._append_log(f"[SUPABASE STAGING INVALID]: {len(errors)} error(s) prevent Supabase export.")
                 for err in errors:
                     self._append_log(f"  • [ERROR] {err}")
@@ -1183,6 +1213,7 @@ class CollectionApp:
                     self._append_log(f"[SUPABASE STAGING READY]: Staging dataset valid ({art_cnt} articles, {cm_cnt} comments). Export enabled.")
 
                 self.btn_export_supabase.config(state=tk.NORMAL)
+                self.btn_upload_supabase.config(state=tk.NORMAL)
 
         else:
             self.current_staging_dataset = None
@@ -1192,6 +1223,7 @@ class CollectionApp:
                 foreground="#555555"
             )
             self.btn_export_supabase.config(state=tk.DISABLED)
+            self.btn_upload_supabase.config(state=tk.DISABLED)
 
     def _populate_supabase_preview(self, dataset: SupabaseStagingDataset):
         """
@@ -1327,6 +1359,53 @@ class CollectionApp:
         except Exception as e:
             self._append_log(f"[SUPABASE EXPORT ERROR]: Failed to write CSV files: {str(e)}")
             messagebox.showerror("Export Failed", f"An error occurred while exporting Supabase staging CSVs:\n\n{str(e)}")
+
+    def _on_upload_supabase_clicked(self):
+        """
+        Launches the Supabase Direct Upload configuration & dry run dialog.
+        """
+        if not self.current_staging_dataset or self.current_staging_dataset.validation_errors:
+            messagebox.showwarning(
+                "Upload Unavailable",
+                "Cannot upload to Supabase because the staging dataset is missing or contains validation errors."
+            )
+            return
+
+        SupabaseUploadDialog(
+            parent=self.root,
+            dataset=self.current_staging_dataset,
+            on_start_upload=self._start_supabase_upload
+        )
+
+    def _start_supabase_upload(self, config, dry_run_result):
+        """
+        Launches worker thread to execute direct upload to Supabase.
+        """
+        self._append_log("\n=== Starting Direct Upload to Supabase ===")
+        self.lbl_supabase_status.config(
+            text="Supabase Upload: Upload in progress...",
+            foreground="#0055aa"
+        )
+        self.btn_upload_supabase.config(state=tk.DISABLED)
+
+        thread = threading.Thread(
+            target=self._worker_supabase_upload_task,
+            args=(self.current_staging_dataset, config, dry_run_result),
+            daemon=True
+        )
+        thread.start()
+
+    def _worker_supabase_upload_task(self, dataset, config, dry_run_result):
+        """
+        Executes upload in background worker thread and posts summary to queue.
+        """
+        try:
+            client = SupabaseClient(config=config)
+            uploader = SupabaseUploader(client=client)
+            summary = uploader.execute_upload(dataset, dry_run_result=dry_run_result)
+            self.queue.put(("SUPABASE_UPLOAD_COMPLETE", summary))
+        except Exception as ex:
+            self.queue.put(("SUPABASE_UPLOAD_ERROR", str(ex)))
 
     def _on_discover_candidates_clicked(self):
         """Opens the Candidate Article Discovery dialog."""

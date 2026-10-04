@@ -11,7 +11,8 @@ import tkinter as tk
 from datetime import datetime, timezone
 
 from src.models.article import Article
-from src.models.comment import Comment, CommentStatus
+from src.models.comment import Comment
+from src.models.comment_status import CommentStatus
 from src.models.extraction import ExtractionResult
 from src.integrations.supabase.models import (
     SupabaseArticleRow,

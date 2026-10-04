@@ -14,8 +14,8 @@ This research prototype supports an engineering design project focusing on **AI 
 - **Full Article Extraction**: Standardized extraction of article titles, authors, publication dates, canonical URLs, and cleaned article text (free of site boilerplate).
 - **Public Comment Extraction**: Automated extraction of top-level comments and nested replies from supported Yahoo News and MSN articles.
 - **Rich Comment Status Classification**: Distinguishes between articles with no comments (`NONE_PRESENT`), disabled comments (`DISABLED`), available comments (`AVAILABLE`), and inaccessible comments (`LOGIN_REQUIRED`, `NOT_LOADED`, `BLOCKED`, `EXTRACTION_ERROR`).
-- **Data Export**: Export collected datasets into nested JSON files, standard CSV files (`articles.csv` and `comments.csv`), or Supabase staging CSV files (`articles_supabase.csv` and `comments_supabase.csv`).
-- **Supabase Staging Preview**: GUI preview tabs for inspecting 14-column Supabase articles staging rows and 5-column Supabase comments staging rows with detail row inspection panels.
+- **Data Export & Direct Upload**: Export collected datasets into nested JSON files, standard CSV files (`articles.csv` and `comments.csv`), Supabase staging CSV files (`articles_supabase.csv` and `comments_supabase.csv`), or perform a direct upload into Supabase database tables (`public.articles` and `public.comments`).
+- **Supabase Staging Preview & Upload**: GUI preview tabs for inspecting 14-column Supabase articles staging rows and 5-column Supabase comments staging rows with detail inspection panels, read-only pre-upload dry run verification, and interactive database upload dialogs (Implementation: **COMPLETE and MOCK-VERIFIED**; Live verification: **DEFERRED — awaiting Supabase project connection information and RLS verification**).
 - **Diagnostic Logging**: Automated snapshot recording of HTML structures and extraction errors in `data/diagnostics/`.
 
 ---
