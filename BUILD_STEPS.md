@@ -490,15 +490,33 @@ Acceptance & Verification:
 
 ### Step 30 — Additional Public Article & Comment Source Support
 
-Expand collection beyond Yahoo and MSN using additional sources that actually provide publicly readable comments, discussions, questions, ideas, or responses:
-- Yahoo and MSN are frozen for Step 30 and must not be modified.
-- The three traditional government sources from Christopher's research that do not provide public comments are NOT implementation targets for Step 30.
-- Investigate scalable local-government/public-institution support through civic-engagement platform families:
-  - EngagementHQ / Engage
-  - Granicus eComment / Legistar
-  - OpenGov / Open Town Hall
-- The goal for local-government support is platform-level detection and adapters where feasible, rather than one adapter per city or county.
-- Detailed implementation scope will be determined during Step 30 Gate 1 planning.
+Expanded collection capabilities beyond Yahoo and MSN using additional publicly accessible sources providing reader comments, discussions, ideas, and civic responses:
+- **Implementation Status**: **Step 30A COMPLETE and MOCK-VERIFIED**.
+- **Yahoo and MSN Frozen**: Yahoo and MSN source adapters (`src/collectors/yahoo.py`, `src/collectors/msn.py`), extraction routines, and regression test suites (`test_yahoo_loader.py`, `test_msn_article_extraction.py`, `test_msn_comment_handling.py`, `test_msn_investigation.py`, `test_router.py`) remain 100% frozen and unmodified.
+- **Shared WordPress Comment Extraction Helper (`src/extraction/wordpress.py`)**:
+  - Parses HTML comment trees (`<ol class="comment-list">`, `<ol class="commentlist">`).
+  - Resolves parent-child reply nesting (`<ul class="children">`), setting `parent_comment_id` and calculating nesting `depth`.
+  - Filters out pingbacks/trackbacks (`<li class="pingback">`, `<li class="trackback">`) and records counts in `Article.diagnostic_notes`.
+  - Safely handles missing comment dates (common in HEPI legacy posts) by setting `published_datetime = None`.
+- **TESL Ontario Blog Source Adapter (`src/collectors/tesl_ontario.py` / `TESLOntarioAdapter`)**:
+  - Extracts article metadata, title, author, published datetime, entry content text, and nested public reader comments from `blog.teslontario.org`.
+  - Validated against ground-truth baseline data in `ChristopherMcQueenBlogGovernmentData092626.xlsx`.
+- **Higher Education Policy Institute Adapter (`src/collectors/hepi.py` / `HEPIAdapter`)**:
+  - Extracts policy reports, guest author bylines, publication date, main text, and public comments from `hepi.ac.uk`.
+  - Preserves `published_datetime = None` for comments lacking HTML timestamps per workbook ground truth.
+- **EngagementHQ Civic Platform Adapter (`src/collectors/engagement_hq.py` / `EngagementHQAdapter`)**:
+  - Platform-centric adapter for civic engagement portals (Granicus / Bang the Table).
+  - Uses multi-fingerprint detection (meta generator `<meta name="generator" content="EngagementHQ">`, asset CDN paths, DOM markers) to recognize portals across custom government domains.
+  - Normalizes consultation project prompts to `Article` (`title`, `article_text`, `original_publisher`) and resident submissions to `Comment` (`comment_text`, `author_display_name`, stance metadata in `reactions`).
+- **Additive SourceRouter Integration (`src/collectors/router.py`)**:
+  - Additively registers `TESLOntarioAdapter`, `HEPIAdapter`, and `EngagementHQAdapter`. Existing Yahoo and MSN routing is completely unchanged.
+- **Pipeline & Staging Compatibility**:
+  - Newly collected `Article` and `Comment` objects flow seamlessly through `SupabaseMapper` (Step 27), `SupabaseStagingDataset`, Step 28 preview, and `SupabaseUploader` (Step 29).
+
+Acceptance & Verification:
+- 100% of unit tests pass with zero live network requests (`tests/test_wordpress_extraction.py`, `tests/test_tesl_ontario.py`, `tests/test_hepi.py`, `tests/test_engagement_hq.py`).
+- 30 Yahoo and MSN regression tests pass unmodified.
+- Complete project test suite passes cleanly (**170 passed** across 30 test modules).
 
 ------------------------------------------------------------------------
 

@@ -116,3 +116,46 @@ def test_custom_adapter_registration():
     assert result.supported is True
     assert result.platform_name == "Custom Platform"
     assert isinstance(adapter, CustomAdapter)
+
+
+def test_source_router_step30_adapters():
+    """Test routing for TESL Ontario, HEPI, and EngagementHQ known domains."""
+    router = SourceRouter()
+
+    r1, a1 = router.route("https://blog.teslontario.org/post-1")
+    assert r1.supported is True
+    assert r1.adapter_name == "TESLOntarioAdapter"
+
+    r2, a2 = router.route("https://www.hepi.ac.uk/post-1")
+    assert r2.supported is True
+    assert r2.adapter_name == "HEPIAdapter"
+
+    r3, a3 = router.route("https://connect.austintexas.gov/projects/ai")
+    assert r3.supported is True
+    assert r3.adapter_name == "EngagementHQAdapter"
+
+
+def test_source_router_route_by_html():
+    """Test post-fetch route_by_html platform detection."""
+    router = SourceRouter()
+
+    # Pre-fetch fails on custom government domain
+    r_pre, a_pre = router.route("https://custom-city.gov/consultation/ai")
+    assert r_pre.supported is False
+    assert a_pre is None
+
+    # Post-fetch probe claims custom domain via HTML fingerprints
+    html = """
+    <html>
+    <head>
+        <meta name="generator" content="EngagementHQ 2.0" />
+        <script src="https://cdn.engagementhq.com/assets/app.js"></script>
+    </head>
+    <body><div class="ehq-widget">Content</div></body>
+    </html>
+    """
+    r_post, a_post = router.route_by_html("https://custom-city.gov/consultation/ai", html)
+    assert r_post.supported is True
+    assert r_post.adapter_name == "EngagementHQAdapter"
+    assert a_post is not None
+

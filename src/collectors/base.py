@@ -25,6 +25,14 @@ class BaseAdapter(ABC):
         """
         pass
 
+    def supports_html(self, url: str, html: str) -> bool:
+        """
+        Optional post-fetch platform detection probe (Step 30A.1).
+        Inspects page HTML for characteristic platform meta generator tags, script CDN paths, or DOM elements.
+        Default implementation returns False.
+        """
+        return False
+
     def load(self, url: str, browser_manager: Optional[BrowserManager] = None) -> BrowserFetchResult:
         """
         Loads the public web page for the specified URL using BrowserManager.

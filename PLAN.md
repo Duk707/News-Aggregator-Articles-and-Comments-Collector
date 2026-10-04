@@ -373,4 +373,4 @@ This turns failed collection attempts into useful engineering evidence.
 
 After Yahoo and MSN: - additional adapters; - scheduler; - article discovery APIs; - source health checks; - configurable collection policies; - NLP/sentiment/topic analysis; - integration into the larger AI-in-Education multi-agent system.
 
-*(Note: Supabase database staging and upload implementation is COMPLETE and MOCK-VERIFIED under Phase 11 / Steps 27–29, with live verification DEFERRED to Step 31. Step 30 covers Additional Public Article & Comment Source Support).*
+*(Note: Supabase database staging and upload implementation is COMPLETE and MOCK-VERIFIED under Phase 11 / Steps 27–29, with live verification DEFERRED to Step 31. Step 30A Additional Public Article & Comment Source Support is COMPLETE and MOCK-VERIFIED).*

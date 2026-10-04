@@ -3,6 +3,12 @@ from pydantic import BaseModel, Field, ConfigDict
 from src.collectors.base import BaseAdapter
 from src.collectors.yahoo import YahooAdapter
 from src.collectors.msn import MSNAdapter
+from src.collectors.tesl_ontario import TESLOntarioAdapter
+from src.collectors.hepi import HEPIAdapter
+from src.collectors.engagement_hq import EngagementHQAdapter
+from src.collectors.cult_of_pedagogy import CultOfPedagogyAdapter
+from src.collectors.spencer_education import SpencerEducationAdapter
+from src.collectors.wonkhe import WonkheAdapter
 from src.models.comment_status import CommentStatus
 from src.utils.urls import validate_url, normalize_url
 
@@ -29,12 +35,20 @@ class SourceRouter:
     def __init__(self, adapters: Optional[List[BaseAdapter]] = None):
         """
         Initializes SourceRouter with registered platform adapters.
-        Default adapters: YahooAdapter, MSNAdapter.
         """
         if adapters is not None:
             self.adapters = adapters
         else:
-            self.adapters = [YahooAdapter(), MSNAdapter()]
+            self.adapters = [
+                YahooAdapter(),
+                MSNAdapter(),
+                TESLOntarioAdapter(),
+                HEPIAdapter(),
+                EngagementHQAdapter(),
+                CultOfPedagogyAdapter(),
+                SpencerEducationAdapter(),
+                WonkheAdapter()
+            ]
 
     def register_adapter(self, adapter: BaseAdapter) -> None:
         """
@@ -85,4 +99,39 @@ class SourceRouter:
             supported=False,
             status=CommentStatus.UNSUPPORTED,
             error_message="Unsupported news website domain"
+        ), None
+
+    def route_by_html(self, url: str, html: str) -> Tuple[RoutingResult, Optional[BaseAdapter]]:
+        """
+        Post-fetch platform detection probe (Step 30A.1).
+        Inspects fetched page HTML using supports_html() contract on registered adapters.
+        """
+        clean_url = normalize_url(url)
+        if not html:
+            return RoutingResult(
+                url=clean_url,
+                is_valid=True,
+                supported=False,
+                status=CommentStatus.UNSUPPORTED,
+                error_message="No HTML content available for fallback platform detection"
+            ), None
+
+        for adapter in self.adapters:
+            if hasattr(adapter, "supports_html") and adapter.supports_html(clean_url, html):
+                return RoutingResult(
+                    url=clean_url,
+                    is_valid=True,
+                    supported=True,
+                    adapter_name=adapter.adapter_name,
+                    platform_name=adapter.platform_name,
+                    status=CommentStatus.UNKNOWN,
+                    error_message=None
+                ), adapter
+
+        return RoutingResult(
+            url=clean_url,
+            is_valid=True,
+            supported=False,
+            status=CommentStatus.UNSUPPORTED,
+            error_message="No registered adapter matched page HTML fingerprints"
         ), None
