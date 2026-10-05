@@ -1,8 +1,14 @@
+"""
+Unit tests for SupabaseMapper (Step 27).
+Includes tests for article mapping, comment ID uniqueness, nested replies,
+timezone-aware timestamp preservation, and missing timestamp provenance warnings.
+"""
 import pytest
 from src.models.article import Article
 from src.models.comment import Comment
 from src.models.comment_status import CommentStatus
 from src.integrations.supabase.mapper import SupabaseMapper
+from src.integrations.supabase.validation import SupabaseValidator
 
 
 def test_map_article_basic():
@@ -29,7 +35,7 @@ def test_map_article_basic():
     assert staged.created_at is None
     assert staged.url == "https://news.yahoo.com/test-article-123.html"
     assert staged.author == "John Doe"
-    assert staged.published_date == "2026-09-30T10:00:00Z"
+    assert staged.published_date == "2026-09-30"
     assert staged.content_hash is not None
     assert len(staged.content_hash) == 64
     assert staged.clean_content == article.article_text
@@ -249,3 +255,80 @@ def test_internal_model_retention():
     assert dataset.source_articles[0].platform == "Yahoo News"
     assert dataset.source_articles[0].comments_status == CommentStatus.AVAILABLE
     assert dataset.source_articles[0].diagnostic_notes == ["Note 1", "Note 2"]
+
+
+def test_map_comments_exact_date_and_created_at_none():
+    """
+    Tests mapping of exact ISO timestamp into SupabaseCommentRow.published_date (YYYY-MM-DD)
+    and created_at = None so DB default now() applies.
+    """
+    comm = Comment(
+        comment_id="tz_comm_1",
+        article_url="https://ousd.granicusideas.com/item/1",
+        comment_text="Comment with PDT timezone",
+        published_datetime="2026-10-03T00:38:00-07:00",
+        retrieved_at="2026-10-04T12:00:00Z"
+    )
+
+    art = Article(
+        platform="Granicus Ideas",
+        source_adapter="GranicusIdeasAdapter",
+        requested_url="https://ousd.granicusideas.com/item/1",
+        publication_datetime="2026-08-12T16:00:00-07:00",
+        retrieved_at="2026-10-04T12:00:00Z",
+        comments=[comm]
+    )
+
+    dataset = SupabaseMapper.build_staging_dataset([art])
+
+    assert dataset.articles[0].published_date == "2026-08-12"
+    assert dataset.articles[0].created_at is None
+
+    assert len(dataset.comments) == 1
+    assert dataset.comments[0].published_date == "2026-10-03"
+    assert dataset.comments[0].created_at is None
+
+    errors, warnings = SupabaseValidator.validate_dataset(dataset)
+    assert len(errors) == 0
+
+
+def test_map_comments_relative_and_missing_timestamps():
+    """
+    Tests mapping of relative-only timestamp (published_datetime = None) and missing timestamps.
+    Verifies SupabaseCommentRow.published_date is None and created_at is None.
+    """
+    comm_relative = Comment(
+        comment_id="rel_comm",
+        article_url="https://ousd.granicusideas.com/item/2",
+        comment_text="Relative timestamp comment",
+        published_datetime=None,
+        retrieved_at="2026-10-04T12:00:00Z"
+    )
+
+    comm_missing = Comment(
+        comment_id="missing_comm",
+        article_url="https://ousd.granicusideas.com/item/2",
+        comment_text="Missing timestamp comment",
+        published_datetime=None,
+        retrieved_at="2026-10-04T12:00:00Z"
+    )
+
+    art = Article(
+        platform="Granicus Ideas",
+        source_adapter="GranicusIdeasAdapter",
+        requested_url="https://ousd.granicusideas.com/item/2",
+        retrieved_at="2026-10-04T12:00:00Z",
+        comments=[comm_relative, comm_missing]
+    )
+
+    dataset = SupabaseMapper.build_staging_dataset([art])
+
+    assert len(dataset.comments) == 2
+    assert dataset.comments[0].published_date is None
+    assert dataset.comments[0].created_at is None
+    assert dataset.comments[1].published_date is None
+    assert dataset.comments[1].created_at is None
+
+    errors, warnings = SupabaseValidator.validate_dataset(dataset)
+    assert len(errors) == 0
+

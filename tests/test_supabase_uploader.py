@@ -200,6 +200,61 @@ class TestSupabaseUploader(unittest.TestCase):
         self.assertEqual(summary.articles_failed, 1)
         self.assertEqual(summary.comments_skipped, 2)
 
+    @patch("src.integrations.supabase.client.requests.post")
+    @patch("src.integrations.supabase.client.requests.get")
+    def test_upload_comment_created_at_omission_and_published_date(self, mock_get, mock_post):
+        """
+        Verifies that 'created_at' is omitted from comment POST payloads so PostgreSQL DEFAULT now() applies.
+        Verifies that 'published_date' is included in POST payload when known and omitted when None.
+        """
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 200
+        mock_get_resp.json.return_value = []
+        mock_get.return_value = mock_get_resp
+
+        mock_post_art = MagicMock()
+        mock_post_art.status_code = 201
+        mock_post_art.json.return_value = [{"id": 100}]
+
+        mock_post_cmt1 = MagicMock()
+        mock_post_cmt1.status_code = 201
+        mock_post_cmt1.json.return_value = [{"id": 501}]
+
+        mock_post_cmt2 = MagicMock()
+        mock_post_cmt2.status_code = 201
+        mock_post_cmt2.json.return_value = [{"id": 502}]
+
+        mock_post.side_effect = [mock_post_art, mock_post_cmt1, mock_post_cmt2]
+
+        dataset = SupabaseStagingDataset(
+            articles=[
+                SupabaseArticleRow(id=-1, source="Granicus", url="https://ousd.granicusideas.com/item/1", title="Item 1", published_date="2026-08-12")
+            ],
+            comments=[
+                SupabaseCommentRow(id=-10, article_id=-1, text="Comment missing date", created_at=None, published_date=None),
+                SupabaseCommentRow(id=-11, article_id=-1, text="Comment with date", created_at=None, published_date="2026-10-03")
+            ]
+        )
+
+        dry_run = self.uploader.run_dry_run(dataset)
+        summary = self.uploader.execute_upload(dataset, dry_run_result=dry_run)
+
+        self.assertTrue(summary.success)
+        self.assertEqual(mock_post.call_count, 3)
+
+        # Inspect POST payloads for comments (calls 1 and 2 after article call 0)
+        cmt1_call_args = mock_post.call_args_list[1]
+        cmt1_payload = cmt1_call_args[1]["json"] if "json" in cmt1_call_args[1] else cmt1_call_args[0][1]
+        self.assertNotIn("created_at", cmt1_payload)
+        self.assertNotIn("published_date", cmt1_payload)
+
+        cmt2_call_args = mock_post.call_args_list[2]
+        cmt2_payload = cmt2_call_args[1]["json"] if "json" in cmt2_call_args[1] else cmt2_call_args[0][1]
+        self.assertNotIn("created_at", cmt2_payload)
+        self.assertIn("published_date", cmt2_payload)
+        self.assertEqual(cmt2_payload["published_date"], "2026-10-03")
+
+
 
 if __name__ == "__main__":
     unittest.main()

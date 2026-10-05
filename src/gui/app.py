@@ -704,7 +704,7 @@ class CollectionApp:
 
         self.panel_supabase_comments_tree = ResizablePanel(
             tab_supabase_comments,
-            text=" Supabase Comments Staging Table (5 Schema Columns) ",
+            text=" Supabase Comments Staging Table (6 Schema Columns) ",
             min_width=440,
             min_height=80,
             on_resize_callback=self._on_supabase_comments_tree_resize
@@ -724,7 +724,8 @@ class CollectionApp:
             ("article_id", "Article ID (Staging)", 120),
             ("text", "Comment Text", 300),
             ("created_at", "Created At", 120),
-            ("parent_comment_id", "Parent Comment ID", 120)
+            ("parent_comment_id", "Parent Comment ID", 120),
+            ("published_date", "Published Date", 120)
         ]
         for col_id, col_name, col_width in sup_cm_col_configs:
             self.supabase_comments_tree.heading(col_id, text=col_name)

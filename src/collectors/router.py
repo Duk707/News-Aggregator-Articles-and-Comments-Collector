@@ -9,6 +9,8 @@ from src.collectors.engagement_hq import EngagementHQAdapter
 from src.collectors.cult_of_pedagogy import CultOfPedagogyAdapter
 from src.collectors.spencer_education import SpencerEducationAdapter
 from src.collectors.wonkhe import WonkheAdapter
+from src.collectors.granicus_ideas import GranicusIdeasAdapter
+from src.collectors.legistar import LegistarAdapter
 from src.models.comment_status import CommentStatus
 from src.utils.urls import validate_url, normalize_url
 
@@ -47,7 +49,9 @@ class SourceRouter:
                 EngagementHQAdapter(),
                 CultOfPedagogyAdapter(),
                 SpencerEducationAdapter(),
-                WonkheAdapter()
+                WonkheAdapter(),
+                GranicusIdeasAdapter(),
+                LegistarAdapter()
             ]
 
     def register_adapter(self, adapter: BaseAdapter) -> None:

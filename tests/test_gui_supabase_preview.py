@@ -77,17 +77,19 @@ class TestSupabasePreviewFormatters(unittest.TestCase):
             id=-101,
             article_id=-1,
             text="This is a test public comment on the article.",
-            created_at="2026-03-31T12:05:00Z",
-            parent_comment_id=None
+            created_at=None,
+            parent_comment_id=None,
+            published_date="2026-03-31"
         )
 
         formatted = format_supabase_comment_tree_row(row)
-        self.assertEqual(len(formatted), 5)
+        self.assertEqual(len(formatted), 6)
         self.assertEqual(formatted[0], "-101")  # id
         self.assertEqual(formatted[1], "-1")  # article_id
         self.assertEqual(formatted[2], "This is a test public comment on the article.")  # text
-        self.assertEqual(formatted[3], "2026-03-31T12:05:00Z")  # created_at
+        self.assertEqual(formatted[3], "(DB Default)")  # created_at
         self.assertEqual(formatted[4], "(Root)")  # parent_comment_id
+        self.assertEqual(formatted[5], "2026-03-31")  # published_date
 
     def test_format_supabase_article_detail(self):
         row = SupabaseArticleRow(
@@ -116,15 +118,18 @@ class TestSupabasePreviewFormatters(unittest.TestCase):
             id=-101,
             article_id=-1,
             text="Un-truncated detailed comment text.",
-            created_at="2026-03-31T12:05:00Z",
-            parent_comment_id=-100
+            created_at=None,
+            parent_comment_id=-100,
+            published_date="2026-03-31"
         )
 
         detail_str = format_supabase_comment_detail(row)
         self.assertIn("=== SUPABASE COMMENT ROW INSPECTION (Staging ID: -101) ===", detail_str)
         self.assertIn("Article Staging ID: -1", detail_str)
         self.assertIn("Parent Comment ID:  -100", detail_str)
+        self.assertIn("Pub Date:         2026-03-31", detail_str)
         self.assertIn("Un-truncated detailed comment text.", detail_str)
+
 
 
 class TestSupabaseAppIntegration(unittest.TestCase):

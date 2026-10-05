@@ -1,0 +1,20 @@
+[
+    {
+        "MatterId": 101,
+        "MatterFile": "25-3060",
+        "MatterName": "Board Policy 0441 — Artificial Intelligence",
+        "MatterTitle": "Board Policy 0441 — Artificial Intelligence",
+        "MatterTypeName": "Board Policy",
+        "MatterStatusName": "Passed",
+        "MatterDate": "2026-08-12T00:00:00Z"
+    },
+    {
+        "MatterId": 102,
+        "MatterFile": "26-1706",
+        "MatterName": "AI Curriculum Framework",
+        "MatterTitle": "Adoption of District AI Curriculum Framework for High Schools",
+        "MatterTypeName": "Resolution",
+        "MatterStatusName": "Adopted",
+        "MatterDate": "2026-08-12T00:00:00Z"
+    }
+]

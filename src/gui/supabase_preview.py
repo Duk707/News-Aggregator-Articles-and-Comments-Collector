@@ -32,13 +32,14 @@ SUPABASE_ARTICLE_COLUMNS = (
     "is_relevant"
 )
 
-# Column tuple definition for Comments (5 columns in exact schema contract order)
+# Column tuple definition for Comments (6 columns in exact schema contract order)
 SUPABASE_COMMENT_COLUMNS = (
     "id",
     "article_id",
     "text",
     "created_at",
-    "parent_comment_id"
+    "parent_comment_id",
+    "published_date"
 )
 
 
@@ -80,7 +81,7 @@ def format_supabase_article_tree_row(row: SupabaseArticleRow) -> Tuple:
 
 def format_supabase_comment_tree_row(row: SupabaseCommentRow) -> Tuple:
     """
-    Formats all 5 SupabaseCommentRow fields into a tuple for Treeview cell display,
+    Formats all 6 SupabaseCommentRow fields into a tuple for Treeview cell display,
     applying text truncation to long comment text for clean table presentation.
     """
     return (
@@ -88,7 +89,8 @@ def format_supabase_comment_tree_row(row: SupabaseCommentRow) -> Tuple:
         str(row.article_id),
         truncate_text(row.text, 65),
         row.created_at or "(DB Default)",
-        str(row.parent_comment_id) if row.parent_comment_id is not None else "(Root)"
+        str(row.parent_comment_id) if row.parent_comment_id is not None else "(Root)",
+        row.published_date or ""
     )
 
 
@@ -131,10 +133,12 @@ def format_supabase_comment_detail(row: SupabaseCommentRow) -> str:
         f"Staging ID:       {row.id} (Temporary negative bigint - globally unique)",
         f"Article Staging ID: {row.article_id}",
         f"Parent Comment ID:  {row.parent_comment_id if row.parent_comment_id is not None else '(Root Comment / Top-Level)'}",
+        f"Pub Date:         {row.published_date or '(None)'}",
         f"Created At:       {row.created_at or '(Omitted - Database Default now() will apply)'}",
         "",
         "--- Full Un-truncated Comment Text ---",
         row.text or "(Empty comment text)"
     ]
     return "\n".join(lines)
+
 

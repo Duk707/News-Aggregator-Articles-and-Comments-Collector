@@ -508,15 +508,23 @@ Expanded collection capabilities beyond Yahoo and MSN using additional publicly 
   - Platform-centric adapter for civic engagement portals (Granicus / Bang the Table).
   - Uses multi-fingerprint detection (meta generator `<meta name="generator" content="EngagementHQ">`, asset CDN paths, DOM markers) to recognize portals across custom government domains.
   - Normalizes consultation project prompts to `Article` (`title`, `article_text`, `original_publisher`) and resident submissions to `Comment` (`comment_text`, `author_display_name`, stance metadata in `reactions`).
+- **Step 30B — Comment-Capable Blog/Policy Expansion**:
+  - `CultOfPedagogyAdapter` (`cult_of_pedagogy.py`): WordPress blog adapter with nested comment tree parsing.
+  - `SpencerEducationAdapter` (`spencer_education.py`): WordPress educational blog adapter preserving missing comment dates as `None`.
+  - `WonkheAdapter` (`wonkhe.py`): Next.js SSR higher-education blog adapter parsing static comment section.
+- **Step 30C — Granicus / Legistar Public-Comment Discovery & Cross-Linking**:
+  - `GranicusIdeasAdapter` (`granicus_ideas.py`): Civic platform adapter for agenda item records and public comment extraction from `*.granicusideas.com`. Supports multi-page comment pagination via `<a rel="next">`, container element filtering (`data-id != None`), reported comment count matching (e.g. OUSD 42 comments), and readable comments with closed submission windows (e.g. Broward MagicSchool AI item).
+  - `LegistarAdapter` (`legistar.py`): Source adapter for Legistar web legislative portals (`*.legistar.com`). Standalone Legistar items without resolved cross-links default to `CommentStatus.UNKNOWN` with diagnostic note "Public comment surface was not resolved for this Legistar item."
+  - `LegistarDiscovery` (`src/discovery/legistar.py`): Discovery service providing OData single-quote escaped keyword search over Legistar REST APIs (`webapi.legistar.com/v1/{client}/matters`) and composite field cross-linking (`COMPOSITE_FIELD_MATCH` via File Number + Meeting Date + Item Title). Returns candidate URLs with preliminary status `CommentStatus.UNKNOWN` (resolution does not claim comment availability; `GranicusIdeasAdapter` remains authoritative upon page extraction).
 - **Additive SourceRouter Integration (`src/collectors/router.py`)**:
-  - Additively registers `TESLOntarioAdapter`, `HEPIAdapter`, and `EngagementHQAdapter`. Existing Yahoo and MSN routing is completely unchanged.
+  - Additively registers `TESLOntarioAdapter`, `HEPIAdapter`, `EngagementHQAdapter`, `CultOfPedagogyAdapter`, `SpencerEducationAdapter`, `WonkheAdapter`, `GranicusIdeasAdapter`, and `LegistarAdapter`. Existing Yahoo and MSN routing is completely unchanged.
 - **Pipeline & Staging Compatibility**:
   - Newly collected `Article` and `Comment` objects flow seamlessly through `SupabaseMapper` (Step 27), `SupabaseStagingDataset`, Step 28 preview, and `SupabaseUploader` (Step 29).
 
 Acceptance & Verification:
-- 100% of unit tests pass with zero live network requests (`tests/test_wordpress_extraction.py`, `tests/test_tesl_ontario.py`, `tests/test_hepi.py`, `tests/test_engagement_hq.py`).
+- 100% of unit tests pass with zero live network requests (`tests/test_wordpress_extraction.py`, `tests/test_tesl_ontario.py`, `tests/test_hepi.py`, `tests/test_engagement_hq.py`, `tests/test_cult_of_pedagogy.py`, `tests/test_spencer_education.py`, `tests/test_wonkhe.py`, `tests/test_granicus_ideas.py`, `tests/test_legistar.py`, `tests/test_step30c_router.py`).
 - 30 Yahoo and MSN regression tests pass unmodified.
-- Complete project test suite passes cleanly (**170 passed** across 30 test modules).
+- Complete project test suite passes cleanly.
 
 ------------------------------------------------------------------------
 

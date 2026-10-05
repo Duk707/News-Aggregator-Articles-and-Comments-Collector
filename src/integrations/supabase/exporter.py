@@ -36,7 +36,8 @@ class SupabaseCSVExporter:
         "article_id",
         "text",
         "created_at",
-        "parent_comment_id"
+        "parent_comment_id",
+        "published_date"
     ]
 
     @classmethod
@@ -107,9 +108,11 @@ class SupabaseCSVExporter:
                     "article_id": str(comm.article_id),
                     "text": comm.text,
                     "created_at": comm.created_at or "",
-                    "parent_comment_id": str(comm.parent_comment_id) if comm.parent_comment_id is not None else ""
+                    "parent_comment_id": str(comm.parent_comment_id) if comm.parent_comment_id is not None else "",
+                    "published_date": comm.published_date or ""
                 }
                 writer_comm.writerow(row)
+
 
         return {
             "articles_csv": articles_path,

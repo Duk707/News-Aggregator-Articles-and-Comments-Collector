@@ -9,10 +9,29 @@ from src.integrations.supabase.models import (
 )
 
 
+import re
+
+DATE_PREFIX_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}")
+
+
 class SupabaseMapper:
     """
     Handles translation of internal Article and Comment models into Supabase-shaped table rows.
     """
+
+    @staticmethod
+    def extract_date_str(val: Optional[str]) -> Optional[str]:
+        """
+        Extracts YYYY-MM-DD date string from an ISO timestamp or date string.
+        Returns None if val is None, empty, or lacks a valid YYYY-MM-DD calendar date.
+        """
+        if not val or not val.strip():
+            return None
+        val_clean = val.strip()
+        match = DATE_PREFIX_PATTERN.match(val_clean)
+        if match:
+            return match.group(0)
+        return None
 
     @staticmethod
     def compute_content_hash(text: Optional[str]) -> Optional[str]:
@@ -40,6 +59,7 @@ class SupabaseMapper:
                else article.requested_url)
         
         content_hash = cls.compute_content_hash(article.article_text)
+        pub_date = cls.extract_date_str(article.publication_datetime or article.updated_datetime)
 
         return SupabaseArticleRow(
             id=staging_id,
@@ -49,7 +69,7 @@ class SupabaseMapper:
             created_at=None,  # DB default now()
             url=url,
             author=article.author,
-            published_date=article.publication_datetime,
+            published_date=pub_date,
             content_hash=content_hash,
             clean_content=article.article_text,
             processing_status=None,  # Intentionally nullable/unset
@@ -134,12 +154,15 @@ class SupabaseMapper:
                 # Fall back to structural parent derived from nested tree or depth hierarchy
                 parent_staging_id = structural_parent_id
 
+            comm_pub_date = cls.extract_date_str(comm.published_datetime)
+
             staged_row = SupabaseCommentRow(
                 id=staging_id,
                 article_id=article_staging_id,
                 text=comm.comment_text or "",
-                created_at=comm.published_datetime,
-                parent_comment_id=parent_staging_id
+                created_at=None,  # DB default now()
+                parent_comment_id=parent_staging_id,
+                published_date=comm_pub_date
             )
             staged_comments.append(staged_row)
 

@@ -1,5 +1,8 @@
+import re
 from typing import List, Tuple, Set, Dict
 from src.integrations.supabase.models import SupabaseStagingDataset
+
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class SupabaseValidator:
@@ -7,6 +10,7 @@ class SupabaseValidator:
     Validator for SupabaseStagingDataset verifying field rules, foreign key constraints,
     and unique index constraints matching public.articles and public.comments schemas.
     """
+
 
     @classmethod
     def validate_dataset(cls, dataset: SupabaseStagingDataset) -> Tuple[List[str], List[str]]:
@@ -92,4 +96,20 @@ class SupabaseValidator:
             if src_art.comments:
                 check_comment_source_ids(src_art.comments)
 
+        # 6. Published date format check (DATE NULL: YYYY-MM-DD)
+        for art in dataset.articles:
+            if art.published_date and art.published_date.strip():
+                if not DATE_PATTERN.match(art.published_date.strip()):
+                    errors.append(
+                        f"Article staging_id {art.id} has invalid published_date format '{art.published_date}'. Expected YYYY-MM-DD."
+                    )
+
+        for comm in dataset.comments:
+            if comm.published_date and comm.published_date.strip():
+                if not DATE_PATTERN.match(comm.published_date.strip()):
+                    errors.append(
+                        f"Comment staging_id {comm.id} has invalid published_date format '{comm.published_date}'. Expected YYYY-MM-DD."
+                    )
+
         return errors, warnings
+

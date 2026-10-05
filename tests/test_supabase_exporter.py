@@ -33,8 +33,9 @@ def test_export_supabase_csv_headers(tmp_path):
         id=-1,
         article_id=-1,
         text="Great article!",
-        created_at="2026-09-30T11:00:00Z",
-        parent_comment_id=None
+        created_at=None,
+        parent_comment_id=None,
+        published_date="2026-09-30"
     )
 
     dataset = SupabaseStagingDataset(articles=[art], comments=[comm])
@@ -58,8 +59,12 @@ def test_export_supabase_csv_headers(tmp_path):
         headers = next(reader)
         assert headers == SupabaseCSVExporter.ARTICLE_FIELDNAMES
 
-    # Verify comments_supabase.csv headers
+    # Verify comments_supabase.csv headers and row contents
     with open(comm_csv_path, "r", encoding="utf-8-sig", newline="") as f:
         reader = csv.reader(f)
         headers = next(reader)
         assert headers == SupabaseCSVExporter.COMMENT_FIELDNAMES
+        assert "published_date" in headers
+        row = next(reader)
+        assert row[headers.index("published_date")] == "2026-09-30"
+

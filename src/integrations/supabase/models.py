@@ -35,13 +35,15 @@ class SupabaseCommentRow(BaseModel):
     id: int = Field(description="Temporary negative bigint staging ID globally unique across dataset")
     article_id: int = Field(description="Temporary negative bigint staging ID of parent article")
     text: str = Field(description="Text content of comment")
-    created_at: Optional[str] = Field(default=None, description="ISO-8601 creation timestamp or None for DB default now()")
+    created_at: Optional[str] = Field(default=None, description="Omitted upon insertion to use DB default now()")
     parent_comment_id: Optional[int] = Field(default=None, description="Temporary negative staging ID of parent comment")
+    published_date: Optional[str] = Field(default=None, description="Original public comment date (YYYY-MM-DD) or None")
 
     model_config = {
         "populate_by_name": True,
         "serialize_by_alias": True
     }
+
 
 
 class SupabaseStagingDataset(BaseModel):
