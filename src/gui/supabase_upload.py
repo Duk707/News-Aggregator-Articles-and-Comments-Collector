@@ -88,7 +88,7 @@ class SupabaseUploadDialog(tk.Toplevel):
         self.entry_url.grid(row=0, column=1, sticky=tk.EW, pady=2, padx=(5, 0))
         self.entry_url.insert(0, self.current_config.supabase_url)
 
-        ttk.Label(lf_config, text="Anon Key:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        ttk.Label(lf_config, text="Publishable / Anon Key:").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.entry_key = ttk.Entry(lf_config, width=50, show="*")
         self.entry_key.grid(row=1, column=1, sticky=tk.EW, pady=2, padx=(5, 0))
         self.entry_key.insert(0, self.current_config.supabase_anon_key)
@@ -155,7 +155,7 @@ class SupabaseUploadDialog(tk.Toplevel):
     def _on_login_clicked(self):
         config = self._sync_config_from_inputs()
         if not config.is_configured():
-            messagebox.showerror("Configuration Error", "Please provide a valid Supabase URL and Anon Key.", parent=self)
+            messagebox.showerror("Configuration Error", "Please provide a valid Supabase URL and Publishable / Anon Key.", parent=self)
             return
 
         email = self.entry_email.get().strip()
@@ -176,7 +176,7 @@ class SupabaseUploadDialog(tk.Toplevel):
     def _on_dry_run_clicked(self):
         config = self._sync_config_from_inputs()
         if not config.is_configured():
-            messagebox.showerror("Configuration Error", "Please provide a valid Supabase URL and Anon Key.", parent=self)
+            messagebox.showerror("Configuration Error", "Please provide a valid Supabase URL and Publishable / Anon Key.", parent=self)
             return
 
         try:
