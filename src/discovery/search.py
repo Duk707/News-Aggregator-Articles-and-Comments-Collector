@@ -10,7 +10,7 @@ from typing import List, Optional, Set, Tuple, Dict, Any
 import requests
 
 from src.collectors.router import SourceRouter
-from src.discovery.models import CandidateArticle
+from src.discovery.models import CandidateArticle, DiscoveryRunDiagnostics, SourceDiscoveryDiagnostics
 from src.utils.urls import normalize_url
 
 
@@ -120,6 +120,7 @@ class CandidateDiscoverer:
 
     def __init__(self, router: Optional[SourceRouter] = None):
         self.router = router or SourceRouter()
+        self.last_diagnostics: Optional[DiscoveryRunDiagnostics] = None
 
     def discover(
         self,
@@ -132,7 +133,8 @@ class CandidateDiscoverer:
         exclude_keywords: Optional[List[str]] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        timeout_sec: int = 15
+        timeout_sec: int = 15,
+        diagnostics: Optional[DiscoveryRunDiagnostics] = None
     ) -> List[CandidateArticle]:
         """
         Executes news discovery over public RSS feed using source-specific sub-queries,
@@ -149,18 +151,24 @@ class CandidateDiscoverer:
             start_date: Optional start date filter string ('YYYY-MM-DD').
             end_date: Optional end date filter string ('YYYY-MM-DD').
             timeout_sec: HTTP request timeout in seconds.
+            diagnostics: Optional DiscoveryRunDiagnostics instance to populate.
 
         Returns:
             List[CandidateArticle]: Filtered, validated, deduplicated, and source-balanced candidate articles.
         """
+        run_diag = diagnostics if diagnostics is not None else DiscoveryRunDiagnostics()
+        self.last_diagnostics = run_diag
+
         clean_query = query.strip() if query else ""
         clean_includes = [k.strip() for k in (include_keywords or []) if k.strip()]
         mode_upper = (include_keyword_mode or "ANY").strip().upper()
 
         if not clean_query and not clean_includes:
+            run_diag.overall_termination = "empty_query"
             return []
 
         if not include_yahoo and not include_msn:
+            run_diag.overall_termination = "no_sources_selected"
             return []
 
         # Formulate source terms
@@ -198,13 +206,31 @@ class CandidateDiscoverer:
         # Populate per-source candidate pools independently
         for site_term in sources:
             pool = source_pools[site_term]
+            src_diag = run_diag.yahoo if "yahoo" in site_term else run_diag.msn
+            src_terminated_reason = "completed_all_pages"
+
             for offset in offsets:
-                if len(pool) >= max_candidates or total_requests >= MAX_TOTAL_REQUESTS:
+                if len(pool) >= max_candidates:
+                    src_terminated_reason = "max_candidates_reached"
                     break
+                if total_requests >= MAX_TOTAL_REQUESTS:
+                    src_terminated_reason = "max_total_requests_budget"
+                    break
+
+                src_diag.pages_attempted += 1
                 new_candidates_on_offset = 0
+                offset_had_network_error = False
+                offset_had_xml_error = False
+                offset_successful_fetch = False
+
                 for bt in base_query_terms:
-                    if len(pool) >= max_candidates or total_requests >= MAX_TOTAL_REQUESTS:
+                    if len(pool) >= max_candidates:
+                        src_terminated_reason = "max_candidates_reached"
                         break
+                    if total_requests >= MAX_TOTAL_REQUESTS:
+                        src_terminated_reason = "max_total_requests_budget"
+                        break
+
                     full_query = f"{bt} {site_term}"
                     params = {
                         "q": full_query,
@@ -212,10 +238,20 @@ class CandidateDiscoverer:
                         "first": offset
                     }
                     total_requests += 1
+                    src_diag.requests_made += 1
 
                     try:
                         resp = requests.get(self.BING_NEWS_RSS_URL, params=params, headers=headers, timeout=timeout_sec)
                         if resp.status_code == 200 and resp.text:
+                            # Pre-check XML parse validity
+                            try:
+                                root_test = ET.fromstring(resp.text.strip())
+                                offset_successful_fetch = True
+                            except Exception:
+                                src_diag.xml_parse_errors += 1
+                                offset_had_xml_error = True
+                                continue
+
                             batch = self.parse_xml_candidates(
                                 xml_content=resp.text,
                                 query=display_query,
@@ -227,19 +263,37 @@ class CandidateDiscoverer:
                                 exclude_keywords=exclude_keywords,
                                 start_date=start_date,
                                 end_date=end_date,
-                                seen_urls=seen_urls
+                                seen_urls=seen_urls,
+                                source_diagnostics=src_diag
                             )
                             for c in batch:
                                 pool.append(c)
                                 new_candidates_on_offset += 1
                                 if len(pool) >= max_candidates:
+                                    src_terminated_reason = "max_candidates_reached"
                                     break
+                        else:
+                            src_diag.network_errors += 1
+                            offset_had_network_error = True
                     except Exception:
+                        src_diag.network_errors += 1
+                        offset_had_network_error = True
                         continue
+
+                # Record per-source unique pooled count
+                src_diag.unique_candidates_pooled = len(pool)
 
                 # Early stop for this source if no new unique candidates were returned on this offset page
                 if new_candidates_on_offset == 0:
+                    if offset_had_network_error and not offset_successful_fetch:
+                        src_terminated_reason = "network_error"
+                    elif offset_had_xml_error and not offset_successful_fetch:
+                        src_terminated_reason = "xml_parse_error"
+                    else:
+                        src_terminated_reason = "zero_yield_page"
                     break
+
+            src_diag.termination_reason = src_terminated_reason
 
         # Balanced round-robin merging across source pools
         merged_candidates: List[CandidateArticle] = []
@@ -248,8 +302,24 @@ class CandidateDiscoverer:
                 if source_pools[site_term]:
                     cand = source_pools[site_term].pop(0)
                     merged_candidates.append(cand)
+                    # Track candidates returned to GUI by source query and actual platform
+                    src_diag = run_diag.yahoo if "yahoo" in site_term else run_diag.msn
+                    src_diag.candidates_returned += 1
+                    actual_plat = cand.platform or "Unknown"
+                    src_diag.returned_platform_breakdown[actual_plat] = (
+                        src_diag.returned_platform_breakdown.get(actual_plat, 0) + 1
+                    )
                     if len(merged_candidates) >= max_candidates:
                         break
+
+        run_diag.total_candidates_returned = len(merged_candidates)
+
+        total_net_errs = run_diag.yahoo.network_errors + run_diag.msn.network_errors
+        total_xml_errs = run_diag.yahoo.xml_parse_errors + run_diag.msn.xml_parse_errors
+        if total_net_errs > 0 or total_xml_errs > 0:
+            run_diag.overall_termination = "completed_with_errors"
+        else:
+            run_diag.overall_termination = "completed"
 
         return merged_candidates
 
@@ -265,7 +335,8 @@ class CandidateDiscoverer:
         exclude_keywords: Optional[List[str]] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        seen_urls: Optional[Set[str]] = None
+        seen_urls: Optional[Set[str]] = None,
+        source_diagnostics: Optional[SourceDiscoveryDiagnostics] = None
     ) -> List[CandidateArticle]:
         """
         Parses candidate articles from an RSS XML string fixture or live HTTP response,
@@ -296,7 +367,14 @@ class CandidateDiscoverer:
         timestamp = datetime.now(timezone.utc).isoformat()
 
         items = root.findall(".//item")
+        if source_diagnostics:
+            # Problem 1: Record all raw <item> elements returned in the valid RSS response
+            source_diagnostics.raw_items_in_responses += len(items)
+
         for item in items:
+            if source_diagnostics:
+                source_diagnostics.items_processed += 1
+
             title_elem = item.find("title")
             link_elem = item.find("link")
             desc_elem = item.find("description")
@@ -308,19 +386,30 @@ class CandidateDiscoverer:
             raw_pub_date = pub_date_elem.text.strip() if (pub_date_elem is not None and pub_date_elem.text) else None
 
             if not raw_link:
+                if source_diagnostics:
+                    source_diagnostics.rejected_unsupported_urls += 1
                 continue
 
             # 1. Clean tracking parameters safely
             cleaned_link = clean_tracking_params(raw_link)
             normalized_link = normalize_url(cleaned_link)
 
-            if not normalized_link or normalized_link in seen_urls:
+            if not normalized_link:
+                if source_diagnostics:
+                    source_diagnostics.rejected_unsupported_urls += 1
+                continue
+
+            if normalized_link in seen_urls:
+                if source_diagnostics:
+                    source_diagnostics.repeated_urls_in_search += 1
                 continue
 
             # 2. Link Parsing & SourceRouter Validation
             # Admit candidate ONLY if SourceRouter validates it as a supported Yahoo/MSN URL
             routing_result, adapter = self.router.route(normalized_link)
             if not routing_result.is_valid or not routing_result.supported or not adapter:
+                if source_diagnostics:
+                    source_diagnostics.rejected_unsupported_urls += 1
                 continue
 
             # 3. Date Parsing & Conservative Date Range Filtering
@@ -331,11 +420,9 @@ class CandidateDiscoverer:
                 # Rule 1 Requirement: When user explicitly supplies start/end date,
                 # do NOT silently treat unknown/unparseable date as satisfying the filter.
                 # Exclude candidate conservatively if date is missing or outside range.
-                if dt_item is None:
-                    continue
-                if start_dt and dt_item < start_dt:
-                    continue
-                if end_dt and dt_item > end_dt:
+                if dt_item is None or (start_dt and dt_item < start_dt) or (end_dt and dt_item > end_dt):
+                    if source_diagnostics:
+                        source_diagnostics.rejected_dates += 1
                     continue
 
             # 4. Include & Exclude Keyword Filtering
@@ -345,24 +432,31 @@ class CandidateDiscoverer:
                 if mode_upper == "ALL":
                     # Candidate text must contain ALL include keywords
                     if not all(inc in searchable_text for inc in clean_includes):
+                        if source_diagnostics:
+                            source_diagnostics.rejected_keywords += 1
                         continue
                 else:
                     # Candidate text must contain AT LEAST ONE include keyword (default ANY)
                     if not any(inc in searchable_text for inc in clean_includes):
+                        if source_diagnostics:
+                            source_diagnostics.rejected_keywords += 1
                         continue
 
             if clean_excludes:
                 # Candidate text must NOT contain any exclude keyword
                 if any(exc in searchable_text for exc in clean_excludes):
+                    if source_diagnostics:
+                        source_diagnostics.rejected_keywords += 1
                     continue
 
             seen_urls.add(normalized_link)
             parsed_domain = urllib.parse.urlparse(normalized_link).netloc
+            actual_platform = routing_result.platform_name or "Unknown"
 
             candidate = CandidateArticle(
                 title=raw_title,
                 url=normalized_link,
-                platform=routing_result.platform_name or "Unknown",
+                platform=actual_platform,
                 source_domain=parsed_domain,
                 snippet=raw_snippet,
                 publication_date=iso_pub_date,
@@ -372,6 +466,11 @@ class CandidateDiscoverer:
                 discovered_at=timestamp
             )
             candidates.append(candidate)
+            if source_diagnostics:
+                # Problem 4: Track actual validated adapter platform breakdown
+                source_diagnostics.platform_breakdown[actual_platform] = (
+                    source_diagnostics.platform_breakdown.get(actual_platform, 0) + 1
+                )
 
             if len(candidates) >= max_candidates:
                 break

@@ -447,3 +447,465 @@ def test_candidate_discoverer_adaptive_depth_max_30(monkeypatch):
     assert 21 in requested_offsets
 
 
+def test_discovery_diagnostics_accounting(monkeypatch):
+    """
+    Verifies that discovery diagnostics track:
+    - Multiple pages with repeated URLs
+    - Unsupported URLs
+    - Keyword rejections
+    - Separate Yahoo / MSN counters
+    - Zero-yield early termination
+    - Accurate unique counts without regression
+    """
+    # Page 1 for Yahoo: 1 valid Yahoo, 1 unsupported URL, 1 keyword reject (contains 'sports')
+    yahoo_p1 = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>AI in Education Yahoo Article 1</title>
+      <link>https://news.yahoo.com/article-1.html</link>
+      <pubDate>Fri, 25 Sep 2026 14:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Unsupported Domain Link</title>
+      <link>https://www.random-blog.com/post.html</link>
+      <pubDate>Fri, 25 Sep 2026 14:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Sports and Gaming Education</title>
+      <link>https://news.yahoo.com/sports-article.html</link>
+      <pubDate>Fri, 25 Sep 2026 14:30:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>"""
+
+    # Page 2 for Yahoo: 1 repeat of Article 1, 1 new valid Yahoo
+    yahoo_p2 = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>AI in Education Yahoo Article 1 Duplicate</title>
+      <link>https://news.yahoo.com/article-1.html?utm_source=feed</link>
+      <pubDate>Fri, 25 Sep 2026 14:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>AI in Education Yahoo Article 2</title>
+      <link>https://news.yahoo.com/article-2.html</link>
+      <pubDate>Fri, 25 Sep 2026 15:30:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>"""
+
+    # Page 3 for Yahoo: empty / zero yield
+    yahoo_p3 = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+  </channel>
+</rss>"""
+
+    # Page 1 for MSN: 1 valid MSN article
+    msn_p1 = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>AI in Education MSN Article 1</title>
+      <link>https://www.msn.com/en-us/news/article/ar-MSN111</link>
+      <pubDate>Fri, 25 Sep 2026 16:30:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>"""
+
+    # Page 2 for MSN: 0 new items (zero yield)
+    msn_p2 = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+  </channel>
+</rss>"""
+
+    class DummyResponse:
+        def __init__(self, text):
+            self.status_code = 200
+            self.text = text
+
+    def mock_get(url, params=None, headers=None, timeout=None):
+        q = params.get("q", "")
+        offset = params.get("first", 1)
+
+        if "site:yahoo.com" in q:
+            if offset == 1:
+                return DummyResponse(yahoo_p1)
+            elif offset == 11:
+                return DummyResponse(yahoo_p2)
+            else:
+                return DummyResponse(yahoo_p3)
+        elif "site:msn.com" in q:
+            if offset == 1:
+                return DummyResponse(msn_p1)
+            else:
+                return DummyResponse(msn_p2)
+        return DummyResponse("")
+
+    monkeypatch.setattr("requests.get", mock_get)
+
+    discoverer = CandidateDiscoverer()
+    cands = discoverer.discover(
+        query="AI Education",
+        include_yahoo=True,
+        include_msn=True,
+        max_candidates=20,
+        exclude_keywords=["sports"]
+    )
+
+    diag = discoverer.last_diagnostics
+    assert diag is not None
+
+    # Yahoo Diagnostics Assertions
+    assert diag.yahoo.source_name == "Yahoo News"
+    assert diag.yahoo.pages_attempted == 3
+    assert diag.yahoo.requests_made == 3
+    assert diag.yahoo.raw_items_in_responses == 5  # 3 on p1 + 2 on p2 + 0 on p3
+    assert diag.yahoo.items_processed == 5
+    assert diag.yahoo.unique_candidates_pooled == 2  # article-1 and article-2
+    assert diag.yahoo.candidates_returned == 2
+    assert diag.yahoo.repeated_urls_in_search == 1  # duplicate of article-1 on p2
+    assert diag.yahoo.rejected_unsupported_urls == 1  # random-blog.com
+    assert diag.yahoo.rejected_keywords == 1  # sports-article.html
+    assert diag.yahoo.platform_breakdown.get("Yahoo News") == 2
+    assert diag.yahoo.termination_reason == "zero_yield_page"
+
+    # MSN Diagnostics Assertions
+    assert diag.msn.source_name == "MSN"
+    assert diag.msn.pages_attempted == 2
+    assert diag.msn.requests_made == 2
+    assert diag.msn.raw_items_in_responses == 1
+    assert diag.msn.items_processed == 1
+    assert diag.msn.unique_candidates_pooled == 1
+    assert diag.msn.candidates_returned == 1
+    assert diag.msn.repeated_urls_in_search == 0
+    assert diag.msn.rejected_unsupported_urls == 0
+    assert diag.msn.rejected_keywords == 0
+    assert diag.msn.platform_breakdown.get("MSN") == 1
+    assert diag.msn.termination_reason == "zero_yield_page"
+
+    # Total and Candidate Verification
+    assert diag.total_candidates_returned == 3  # 2 Yahoo + 1 MSN
+    assert len(cands) == 3
+    urls = [c.url for c in cands]
+    assert "https://news.yahoo.com/article-1.html" in urls
+    assert "https://news.yahoo.com/article-2.html" in urls
+    assert "https://www.msn.com/en-us/news/article/ar-MSN111" in urls
+
+    # Summary Line & Multiline Report Checks
+    summary_line = diag.format_summary_line()
+    assert "Yahoo News: 2 ret / 2 pooled" in summary_line
+    assert "MSN: 1 ret / 1 pooled" in summary_line
+    assert "term: zero_yield_page" in summary_line
+
+    report = diag.format_multiline_report()
+    assert "Discovery Run Summary" in report
+    assert "Yahoo News Query (Terminated: zero_yield_page)" in report
+    assert "MSN Query (Terminated: zero_yield_page)" in report
+    assert "Yield: 2 pooled -> 2 returned to GUI" in report
+
+
+def test_discovery_diagnostics_corrections_regression(monkeypatch):
+    """
+    Focused regression test covering:
+    1. raw_items_in_responses vs items_processed when candidate limit cuts processing early.
+    2. Network error and xml parse error distinguishing from zero_yield_page.
+    3. Separate pooled vs returned counts when global max_candidates cuts source pool.
+    4. Platform breakdown tracking actual router-validated platform.
+    """
+    # 5 raw items in RSS XML
+    xml_with_5_items = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Article 1</title>
+      <link>https://news.yahoo.com/article-1.html</link>
+      <pubDate>Fri, 25 Sep 2026 14:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Article 2</title>
+      <link>https://news.yahoo.com/article-2.html</link>
+      <pubDate>Fri, 25 Sep 2026 14:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Article 3</title>
+      <link>https://news.yahoo.com/article-3.html</link>
+      <pubDate>Fri, 25 Sep 2026 14:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Article 4</title>
+      <link>https://news.yahoo.com/article-4.html</link>
+      <pubDate>Fri, 25 Sep 2026 14:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Article 5</title>
+      <link>https://news.yahoo.com/article-5.html</link>
+      <pubDate>Fri, 25 Sep 2026 14:30:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>"""
+
+    class DummyResponse:
+        def __init__(self, text, status_code=200):
+            self.status_code = status_code
+            self.text = text
+
+    # Case 1: Max candidates = 2 on Yahoo with 5 items in response
+    def mock_get_limit(url, params=None, headers=None, timeout=None):
+        return DummyResponse(xml_with_5_items)
+
+    monkeypatch.setattr("requests.get", mock_get_limit)
+
+    discoverer = CandidateDiscoverer()
+    cands = discoverer.discover(
+        query="AI Education",
+        include_yahoo=True,
+        include_msn=False,
+        max_candidates=2
+    )
+
+    diag = discoverer.last_diagnostics
+    assert len(cands) == 2
+    # All 5 raw items in response counted, but only 2 processed before limit reached
+    assert diag.yahoo.raw_items_in_responses == 5
+    assert diag.yahoo.items_processed == 2
+    assert diag.yahoo.unique_candidates_pooled == 2
+    assert diag.yahoo.candidates_returned == 2
+    assert diag.yahoo.termination_reason == "max_candidates_reached"
+    assert diag.yahoo.platform_breakdown.get("Yahoo News") == 2
+
+    # Case 2: Network error returns HTTP 500
+    def mock_get_net_err(url, params=None, headers=None, timeout=None):
+        return DummyResponse("Server Error", status_code=500)
+
+    monkeypatch.setattr("requests.get", mock_get_net_err)
+    discoverer_net = CandidateDiscoverer()
+    cands_net = discoverer_net.discover(
+        query="AI Education",
+        include_yahoo=True,
+        include_msn=False,
+        max_candidates=10
+    )
+    assert len(cands_net) == 0
+    assert discoverer_net.last_diagnostics.yahoo.network_errors == 1
+    assert discoverer_net.last_diagnostics.yahoo.termination_reason == "network_error"
+
+    # Case 3: Invalid XML response
+    def mock_get_xml_err(url, params=None, headers=None, timeout=None):
+        return DummyResponse("<not-valid-xml<<", status_code=200)
+
+    monkeypatch.setattr("requests.get", mock_get_xml_err)
+    discoverer_xml = CandidateDiscoverer()
+    cands_xml = discoverer_xml.discover(
+        query="AI Education",
+        include_yahoo=True,
+        include_msn=False,
+        max_candidates=10
+    )
+    assert len(cands_xml) == 0
+    assert discoverer_xml.last_diagnostics.yahoo.xml_parse_errors == 1
+    assert discoverer_xml.last_diagnostics.yahoo.termination_reason == "xml_parse_error"
+
+    # Case 4: Separate pooled vs returned counts when global max_candidates cuts source pool
+    # Yahoo has 2, MSN has 2, but max_candidates = 3
+    msn_xml_2_items = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>MSN 1</title>
+      <link>https://www.msn.com/en-us/news/article/ar-M1</link>
+    </item>
+    <item>
+      <title>MSN 2</title>
+      <link>https://www.msn.com/en-us/news/article/ar-M2</link>
+    </item>
+  </channel>
+</rss>"""
+
+    yahoo_xml_2_items = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Yahoo 1</title>
+      <link>https://news.yahoo.com/y1.html</link>
+    </item>
+    <item>
+      <title>Yahoo 2</title>
+      <link>https://news.yahoo.com/y2.html</link>
+    </item>
+  </channel>
+</rss>"""
+
+    def mock_get_both(url, params=None, headers=None, timeout=None):
+        q = params.get("q", "")
+        if "site:yahoo.com" in q:
+            return DummyResponse(yahoo_xml_2_items)
+        elif "site:msn.com" in q:
+            return DummyResponse(msn_xml_2_items)
+        return DummyResponse("")
+
+    monkeypatch.setattr("requests.get", mock_get_both)
+    discoverer_both = CandidateDiscoverer()
+    cands_both = discoverer_both.discover(
+        query="AI Education",
+        include_yahoo=True,
+        include_msn=True,
+        max_candidates=3
+    )
+
+    diag_both = discoverer_both.last_diagnostics
+    assert len(cands_both) == 3
+    # Both pools accumulated 2 unique items (4 total pooled)
+    assert diag_both.yahoo.unique_candidates_pooled == 2
+    assert diag_both.msn.unique_candidates_pooled == 2
+    # Round-robin merging yielded 2 from Yahoo, 1 from MSN = 3 total returned to GUI
+    assert diag_both.yahoo.candidates_returned == 2
+    assert diag_both.msn.candidates_returned == 1
+    assert diag_both.total_candidates_returned == 3
+    # Check returned platform breakdown
+    assert diag_both.yahoo.returned_platform_breakdown.get("Yahoo News") == 2
+    assert diag_both.msn.returned_platform_breakdown.get("MSN") == 1
+    assert diag_both.overall_termination == "completed"
+
+
+def test_discovery_diagnostics_overall_status_and_platform_breakdown(monkeypatch):
+    """
+    Verifies:
+    1. No errors results in 'completed'.
+    2. An HTTP/network error results in 'completed_with_errors'.
+    3. Malformed XML results in 'completed_with_errors'.
+    4. Zero-yield pages without errors do not count as network failures and result in 'completed'.
+    5. Pooled and returned platform totals differ correctly when global candidate limit truncates.
+    6. Cross-platform RSS results are attributed to their actual validated platform.
+    7. Existing discovery candidate ordering and limits remain unchanged.
+    """
+    class DummyResponse:
+        def __init__(self, text, status_code=200):
+            self.status_code = status_code
+            self.text = text
+
+    # XML returning 3 Yahoo articles
+    yahoo_xml_3 = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Y1</title>
+      <link>https://news.yahoo.com/y1.html</link>
+    </item>
+    <item>
+      <title>Y2</title>
+      <link>https://news.yahoo.com/y2.html</link>
+    </item>
+    <item>
+      <title>Y3</title>
+      <link>https://news.yahoo.com/y3.html</link>
+    </item>
+  </channel>
+</rss>"""
+
+    # Cross-platform XML: query was site:msn.com, but contains 1 MSN and 1 valid Yahoo link
+    msn_xml_cross = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>MSN Article</title>
+      <link>https://www.msn.com/en-us/news/article/ar-CROSS1</link>
+    </item>
+    <item>
+      <title>Yahoo Article Found via MSN query</title>
+      <link>https://news.yahoo.com/cross-yahoo.html</link>
+    </item>
+  </channel>
+</rss>"""
+
+    # --- Scenario 1: Clean run with truncation (max_candidates=2) and cross-platform attribution ---
+    def mock_get_clean(url, params=None, headers=None, timeout=None):
+        q = params.get("q", "")
+        if "site:yahoo.com" in q:
+            return DummyResponse(yahoo_xml_3)
+        elif "site:msn.com" in q:
+            return DummyResponse(msn_xml_cross)
+        return DummyResponse("")
+
+    monkeypatch.setattr("requests.get", mock_get_clean)
+    disc = CandidateDiscoverer()
+    cands = disc.discover(query="AI Education", include_yahoo=True, include_msn=True, max_candidates=2)
+
+    diag = disc.last_diagnostics
+    assert len(cands) == 2
+    # Status is 'completed' because zero network or xml errors occurred
+    assert diag.overall_termination == "completed"
+
+    # Yahoo query pooled 2 (hit max_candidates=2 for pool), returned 1
+    assert diag.yahoo.unique_candidates_pooled == 2
+    assert diag.yahoo.candidates_returned == 1
+    assert diag.yahoo.platform_breakdown == {"Yahoo News": 2}
+    assert diag.yahoo.returned_platform_breakdown == {"Yahoo News": 1}
+
+    # MSN query pooled 2 (1 MSN, 1 Yahoo News cross-platform!), returned 1 (MSN)
+    assert diag.msn.unique_candidates_pooled == 2
+    assert diag.msn.candidates_returned == 1
+    assert diag.msn.platform_breakdown == {"MSN": 1, "Yahoo News": 1}
+    assert diag.msn.returned_platform_breakdown == {"MSN": 1}
+
+    # Check candidate ordering (round-robin: first from Yahoo, then first from MSN)
+    assert cands[0].url == "https://news.yahoo.com/y1.html"
+    assert cands[1].url == "https://www.msn.com/en-us/news/article/ar-CROSS1"
+
+    # Multiline report checks
+    report = diag.format_multiline_report()
+    assert "Status: completed" in report
+    assert "Pooled [Yahoo News: 2] -> Returned [Yahoo News: 1]" in report
+    assert "Pooled [MSN: 1, Yahoo News: 1] -> Returned [MSN: 1]" in report
+
+    # --- Scenario 2: Network error causes 'completed_with_errors' ---
+    def mock_get_net_fail(url, params=None, headers=None, timeout=None):
+        q = params.get("q", "")
+        if "site:yahoo.com" in q:
+            return DummyResponse(yahoo_xml_3)
+        return DummyResponse("Gateway Timeout", status_code=504)
+
+    monkeypatch.setattr("requests.get", mock_get_net_fail)
+    disc_net = CandidateDiscoverer()
+    cands_net = disc_net.discover(query="AI Education", include_yahoo=True, include_msn=True, max_candidates=5)
+    diag_net = disc_net.last_diagnostics
+    assert diag_net.overall_termination == "completed_with_errors"
+    assert diag_net.msn.network_errors == 1
+    assert diag_net.msn.termination_reason == "network_error"
+    assert diag_net.yahoo.network_errors == 0
+    assert diag_net.yahoo.termination_reason == "zero_yield_page"
+
+    # --- Scenario 3: Malformed XML causes 'completed_with_errors' ---
+    def mock_get_xml_fail(url, params=None, headers=None, timeout=None):
+        q = params.get("q", "")
+        if "site:yahoo.com" in q:
+            return DummyResponse(yahoo_xml_3)
+        return DummyResponse("<malformed><<", status_code=200)
+
+    monkeypatch.setattr("requests.get", mock_get_xml_fail)
+    disc_xml = CandidateDiscoverer()
+    cands_xml = disc_xml.discover(query="AI Education", include_yahoo=True, include_msn=True, max_candidates=5)
+    diag_xml = disc_xml.last_diagnostics
+    assert diag_xml.overall_termination == "completed_with_errors"
+    assert diag_xml.msn.xml_parse_errors == 1
+    assert diag_xml.msn.termination_reason == "xml_parse_error"
+
+    # --- Scenario 4: Clean zero yield does NOT count as error ---
+    def mock_get_empty(url, params=None, headers=None, timeout=None):
+        return DummyResponse("<rss><channel></channel></rss>", status_code=200)
+
+    monkeypatch.setattr("requests.get", mock_get_empty)
+    disc_empty = CandidateDiscoverer()
+    cands_empty = disc_empty.discover(query="AI Education", include_yahoo=True, include_msn=True, max_candidates=5)
+    diag_empty = disc_empty.last_diagnostics
+    assert len(cands_empty) == 0
+    assert diag_empty.overall_termination == "completed"
+    assert diag_empty.yahoo.network_errors == 0
+    assert diag_empty.yahoo.xml_parse_errors == 0
+    assert diag_empty.yahoo.termination_reason == "zero_yield_page"
+    assert diag_empty.msn.termination_reason == "zero_yield_page"
+
+

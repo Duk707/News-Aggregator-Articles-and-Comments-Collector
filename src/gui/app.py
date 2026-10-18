@@ -1557,7 +1557,13 @@ class CandidateDiscoveryDialog(tk.Toplevel):
 
         # Status & Progress
         self.lbl_status = ttk.Label(main_frame, text="Status: Enter query or keywords and click Discover Candidates", font=("Segoe UI", 9, "italic"))
-        self.lbl_status.pack(fill=tk.X, expand=False, pady=(0, 4))
+        self.lbl_status.pack(fill=tk.X, expand=False, pady=(0, 2))
+
+        # Discovery Diagnostics Report Panel
+        self.txt_diagnostics = scrolledtext.ScrolledText(main_frame, height=5, font=("Consolas", 8), wrap=tk.WORD)
+        self.txt_diagnostics.pack(fill=tk.X, expand=False, pady=(0, 6))
+        self.txt_diagnostics.insert(tk.END, "Discovery Diagnostics: Ready.")
+        self.txt_diagnostics.config(state=tk.DISABLED)
 
         # 2. Candidate Preview & Selection Table
         table_group = ttk.LabelFrame(main_frame, text=" 2. Discovered Candidates Preview & Selection ", padding="8")
@@ -1653,6 +1659,11 @@ class CandidateDiscoveryDialog(tk.Toplevel):
         self.btn_search.config(state=tk.DISABLED)
         status_query = query if query else ", ".join(inc_kws)
         self.lbl_status.config(text=f"Status: Discovering candidates for '{status_query}'...")
+        if hasattr(self, "txt_diagnostics"):
+            self.txt_diagnostics.config(state=tk.NORMAL)
+            self.txt_diagnostics.delete("1.0", tk.END)
+            self.txt_diagnostics.insert(tk.END, f"Discovering candidates for '{status_query}'...\n")
+            self.txt_diagnostics.config(state=tk.DISABLED)
 
         # Clear tree
         for item in self.tree.get_children():
@@ -1678,7 +1689,7 @@ class CandidateDiscoveryDialog(tk.Toplevel):
                 include_keyword_mode=inc_mode,
                 exclude_keywords=exc_kws
             )
-            self.queue.put(("DONE", cands, query))
+            self.queue.put(("DONE", cands, query, discoverer.last_diagnostics))
         except Exception as e:
             self.queue.put(("ERROR", str(e)))
 
@@ -1687,7 +1698,11 @@ class CandidateDiscoveryDialog(tk.Toplevel):
             while True:
                 msg = self.queue.get_nowait()
                 if msg[0] == "DONE":
-                    _, cands, query = msg
+                    if len(msg) >= 4:
+                        _, cands, query, diagnostics = msg
+                    else:
+                        _, cands, query = msg
+                        diagnostics = None
                     self.discovered_candidates = cands
                     valid_dates = sorted([c.publication_date[:10] for c in cands if c.publication_date])
                     if valid_dates:
@@ -1699,7 +1714,17 @@ class CandidateDiscoveryDialog(tk.Toplevel):
                             date_msg = f" Available dates in this search: {earliest} to {latest}."
                     else:
                         date_msg = ""
+
                     self.lbl_status.config(text=f"Status: Discovered {len(cands)} candidate article(s).{date_msg}")
+                    if hasattr(self, "txt_diagnostics"):
+                        self.txt_diagnostics.config(state=tk.NORMAL)
+                        self.txt_diagnostics.delete("1.0", tk.END)
+                        if diagnostics:
+                            self.txt_diagnostics.insert(tk.END, diagnostics.format_multiline_report())
+                        else:
+                            self.txt_diagnostics.insert(tk.END, "Discovery Diagnostics: No diagnostics recorded.")
+                        self.txt_diagnostics.config(state=tk.DISABLED)
+
                     self.btn_search.config(state=tk.NORMAL)
                     self.is_discovering = False
 
@@ -1717,6 +1742,11 @@ class CandidateDiscoveryDialog(tk.Toplevel):
                 elif msg[0] == "ERROR":
                     _, err = msg
                     self.lbl_status.config(text=f"Status: Discovery error")
+                    if hasattr(self, "txt_diagnostics"):
+                        self.txt_diagnostics.config(state=tk.NORMAL)
+                        self.txt_diagnostics.delete("1.0", tk.END)
+                        self.txt_diagnostics.insert(tk.END, f"Discovery Error:\n{err}")
+                        self.txt_diagnostics.config(state=tk.DISABLED)
                     self.btn_search.config(state=tk.NORMAL)
                     self.is_discovering = False
                     messagebox.showerror("Discovery Error", f"Failed to discover candidates:\n{err}")
