@@ -103,7 +103,7 @@ def format_supabase_article_detail(row: SupabaseArticleRow) -> str:
         f"Database Table: public.articles",
         f"Staging ID:     {row.id} (Temporary negative bigint)",
         f"Title:          {row.title or '(None)'}",
-        f"Canonical URL:  {row.url or '(None)'}",
+        f"Article URL:    {row.url or '(None)'}",
         f"Original Source:{row.source or '(None)'}",
         f"Author:         {row.author or '(None)'}",
         f"Pub Date:       {row.published_date or '(None)'}",

@@ -22,6 +22,13 @@ from src.integrations.supabase.uploader import (
     UploadExecutionSummary,
     UploadRecordResult
 )
+from src.integrations.supabase.url_checker import (
+    SupabaseUrlChecker,
+    UrlCheckerSnapshot,
+    UrlRetrievalStatus,
+    StoredUrlRecord,
+    canonicalize_url_key
+)
 
 __all__ = [
     "SupabaseArticleRow",
@@ -37,5 +44,10 @@ __all__ = [
     "SupabaseUploader",
     "UploadDryRunResult",
     "UploadExecutionSummary",
-    "UploadRecordResult"
+    "UploadRecordResult",
+    "SupabaseUrlChecker",
+    "UrlCheckerSnapshot",
+    "UrlRetrievalStatus",
+    "StoredUrlRecord",
+    "canonicalize_url_key"
 ]

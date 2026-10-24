@@ -1,6 +1,7 @@
 import re
-from typing import List, Tuple, Set, Dict
+from typing import List, Tuple, Set, Dict, Any
 from src.integrations.supabase.models import SupabaseStagingDataset
+from src.utils.urls import validate_url
 
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -10,6 +11,22 @@ class SupabaseValidator:
     Validator for SupabaseStagingDataset verifying field rules, foreign key constraints,
     and unique index constraints matching public.articles and public.comments schemas.
     """
+    _yahoo_adapter = None
+    _msn_adapter = None
+
+    @classmethod
+    def _get_yahoo_adapter(cls):
+        if cls._yahoo_adapter is None:
+            from src.collectors.yahoo import YahooAdapter
+            cls._yahoo_adapter = YahooAdapter()
+        return cls._yahoo_adapter
+
+    @classmethod
+    def _get_msn_adapter(cls):
+        if cls._msn_adapter is None:
+            from src.collectors.msn import MSNAdapter
+            cls._msn_adapter = MSNAdapter()
+        return cls._msn_adapter
 
 
     @classmethod
@@ -26,20 +43,56 @@ class SupabaseValidator:
         valid_article_ids: Set[int] = {art.id for art in dataset.articles}
         valid_comment_ids: Set[int] = {comm.id for comm in dataset.comments}
 
-        # 1. Unique index check: articles_url_unique_idx
+        # Safely associate staged articles with source articles before relying on index mapping
+        staged_to_source: Dict[int, Any] = {}
+        if (
+            dataset.source_articles
+            and len(dataset.articles) == len(dataset.source_articles)
+        ):
+            all_associated = True
+            for i, staged_art in enumerate(dataset.articles):
+                src_art = dataset.source_articles[i]
+                title_matches = (staged_art.title or "").strip() == (src_art.title or "").strip()
+                body_matches = (staged_art.content or "").strip() == (src_art.article_text or "").strip()
+                if title_matches and body_matches:
+                    staged_to_source[staged_art.id] = src_art
+                else:
+                    all_associated = False
+                    break
+            if not all_associated:
+                staged_to_source.clear()
+
+        # 1. Unique index check & URL validation: articles_url_unique_idx
         seen_urls: Dict[str, int] = {}
         for art in dataset.articles:
             if not art.url or not art.url.strip():
                 errors.append(f"Article staging_id {art.id} is missing a required non-empty URL.")
             else:
                 url_clean = art.url.strip()
-                if url_clean in seen_urls:
+                if not validate_url(url_clean):
+                    errors.append(f"Article staging_id {art.id} has an invalid URL syntax: '{url_clean}'.")
+                elif url_clean in seen_urls:
                     errors.append(
                         f"Duplicate URL '{url_clean}' detected across articles "
                         f"(staging_ids {seen_urls[url_clean]} and {art.id}). Violates articles_url_unique_idx."
                     )
                 else:
                     seen_urls[url_clean] = art.id
+
+                # Scope domain check to Yahoo/MSN using existing adapter rules
+                src_art = staged_to_source.get(art.id)
+                if src_art:
+                    is_yahoo = (src_art.platform == "Yahoo News" or src_art.source_adapter == "YahooAdapter")
+                    is_msn = (src_art.platform == "MSN" or src_art.source_adapter == "MSNAdapter")
+
+                    if is_yahoo and not cls._get_yahoo_adapter().supports(url_clean):
+                        errors.append(
+                            f"Article staging_id {art.id} platform '{src_art.platform}' requires a valid Yahoo News URL supported by YahooAdapter, but found '{url_clean}'."
+                        )
+                    elif is_msn and not cls._get_msn_adapter().supports(url_clean):
+                        errors.append(
+                            f"Article staging_id {art.id} platform '{src_art.platform}' requires a valid MSN URL supported by MSNAdapter, but found '{url_clean}'."
+                        )
 
         # 2. Unique index check: articles_content_hash_unique_idx
         seen_hashes: Dict[str, int] = {}

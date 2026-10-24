@@ -35,8 +35,10 @@ from src.integrations.supabase import (
     SupabaseArticleRow,
     SupabaseCommentRow,
     SupabaseClient,
-    SupabaseUploader
+    SupabaseUploader,
+    SupabaseUrlChecker
 )
+from src.integrations.supabase.config import load_supabase_config
 from src.gui.supabase_preview import (
     SUPABASE_ARTICLE_COLUMNS,
     SUPABASE_COMMENT_COLUMNS,
@@ -656,7 +658,7 @@ class CollectionApp:
             ("content", "Content (Raw)", 150),
             ("source", "Source", 80),
             ("created_at", "Created At", 110),
-            ("url", "Canonical URL", 160),
+            ("url", "Article URL", 160),
             ("author", "Author", 90),
             ("published_date", "Published Date", 110),
             ("content_hash", "Content Hash", 100),
@@ -1451,21 +1453,44 @@ class CollectionApp:
 class CandidateDiscoveryDialog(tk.Toplevel):
     """
     Tkinter Toplevel dialog for candidate article discovery and interactive preview/selection.
-    Allows entering main search topics, selecting Yahoo/MSN source filters, max candidate counts,
-    include/exclude keywords, and start/end dates.
+    Supports independent Yahoo/MSN candidate targets, read-only Supabase URL duplicate checking,
+    conditional pagination, candidate verification status display, and legacy combined max candidates mode.
     """
-    def __init__(self, parent: tk.Tk, initial_topic: str = "", on_import_callback=None):
+    def __init__(
+        self,
+        parent: tk.Tk,
+        initial_topic: str = "",
+        on_import_callback=None,
+        url_checker=None,
+        http_fetcher=None,
+        supabase_config=None
+    ):
         super().__init__(parent)
         self.title("Candidate Article Discovery & Preview")
-        self.geometry("920x650")
+        self.geometry("960x700")
         self.minsize(640, 480)
 
         self.on_import_callback = on_import_callback
         self.queue: queue.Queue = queue.Queue()
+        self.cancel_event = threading.Event()
         self.is_discovering = False
         self.discovered_candidates: List[CandidateArticle] = []
+        self._url_checker_override = url_checker
+        self._http_fetcher_override = http_fetcher
+        self._supabase_config_override = supabase_config
+
+        # Determine local safe Supabase configuration availability without network requests
+        try:
+            cfg = self._supabase_config_override if self._supabase_config_override is not None else load_supabase_config()
+            supabase_configured = cfg.is_configured()
+        except Exception:
+            supabase_configured = False
+
+        self.var_supabase_check = tk.BooleanVar(value=supabase_configured)
+        self.var_legacy_mode = tk.BooleanVar(value=False)
 
         self._create_widgets(initial_topic)
+        self.protocol("WM_DELETE_WINDOW", self._on_close_dialog)
         self.transient(parent)
         self.grab_set()
 
@@ -1500,20 +1525,50 @@ class CandidateDiscoveryDialog(tk.Toplevel):
         )
         lbl_query_help.grid(row=1, column=1, columnspan=4, sticky=tk.W, pady=(0, 4))
 
-        # --- Row 2: Sources & Max Candidates ---
-        ttk.Label(grid, text="Sources:").grid(row=2, column=0, sticky=tk.W, padx=(0, 4), pady=3)
+        # --- Row 2: Sources & Independent Targets ---
+        ttk.Label(grid, text="Sources & Targets:").grid(row=2, column=0, sticky=tk.W, padx=(0, 4), pady=3)
         sources_subframe = ttk.Frame(grid)
         sources_subframe.grid(row=2, column=1, sticky=tk.W, pady=3)
+
         self.var_yahoo = tk.BooleanVar(value=True)
         self.var_msn = tk.BooleanVar(value=True)
-        self.chk_yahoo = ttk.Checkbutton(sources_subframe, text="Yahoo News", variable=self.var_yahoo)
-        self.chk_yahoo.pack(side=tk.LEFT, padx=(0, 8))
-        self.chk_msn = ttk.Checkbutton(sources_subframe, text="MSN", variable=self.var_msn)
-        self.chk_msn.pack(side=tk.LEFT)
 
-        ttk.Label(grid, text="Max Candidates:").grid(row=2, column=3, sticky=tk.E, padx=(16, 4), pady=3)
-        self.ent_max = ttk.Entry(grid, width=8)
-        self.ent_max.insert(0, "20")
+        self.var_target_yahoo = tk.StringVar(value="50")
+        self.var_target_msn = tk.StringVar(value="50")
+        self.var_max = tk.StringVar(value="20")
+
+        self.var_target_yahoo.trace_add("write", lambda *args: self._update_mode_description())
+        self.var_target_msn.trace_add("write", lambda *args: self._update_mode_description())
+        self.var_max.trace_add("write", lambda *args: self._update_mode_description())
+
+        self.chk_yahoo = ttk.Checkbutton(sources_subframe, text="Yahoo News", variable=self.var_yahoo, command=self._on_source_toggled)
+        self.chk_yahoo.pack(side=tk.LEFT, padx=(0, 2))
+
+        ttk.Label(sources_subframe, text="Target:").pack(side=tk.LEFT, padx=(2, 2))
+        self.ent_target_yahoo = ttk.Entry(sources_subframe, width=5, textvariable=self.var_target_yahoo)
+
+        self.ent_target_yahoo.pack(side=tk.LEFT, padx=(0, 10))
+
+        self.chk_msn = ttk.Checkbutton(sources_subframe, text="MSN", variable=self.var_msn, command=self._on_source_toggled)
+        self.chk_msn.pack(side=tk.LEFT, padx=(0, 2))
+
+        ttk.Label(sources_subframe, text="Target:").pack(side=tk.LEFT, padx=(2, 2))
+        self.ent_target_msn = ttk.Entry(sources_subframe, width=5, textvariable=self.var_target_msn)
+
+        self.ent_target_msn.pack(side=tk.LEFT, padx=(0, 4))
+
+        # Legacy Combined Max Candidates controls
+        self.chk_legacy = ttk.Checkbutton(
+            grid,
+            text="Legacy Combined Max:",
+            variable=self.var_legacy_mode,
+            command=self._on_legacy_toggled
+        )
+        self.chk_legacy.grid(row=2, column=3, sticky=tk.E, padx=(10, 4), pady=3)
+
+        self.ent_max = ttk.Entry(grid, width=6, textvariable=self.var_max)
+
+        self.ent_max.config(state=tk.DISABLED)
         self.ent_max.grid(row=2, column=4, sticky=tk.W, pady=3)
 
         # --- Row 3: Include & Exclude Keywords ---
@@ -1521,39 +1576,50 @@ class CandidateDiscoveryDialog(tk.Toplevel):
         inc_subframe = ttk.Frame(grid)
         inc_subframe.grid(row=3, column=1, sticky=tk.EW, pady=3)
         inc_subframe.columnconfigure(0, weight=1)
-        
+
         self.ent_inc = ttk.Entry(inc_subframe)
         self.ent_inc.grid(row=0, column=0, sticky=tk.EW, padx=(0, 4))
         ttk.Label(inc_subframe, text="Mode:").grid(row=0, column=1, sticky=tk.W, padx=(2, 2))
-        self.cmb_inc_mode = ttk.Combobox(inc_subframe, values=["ANY", "ALL"], width=5, state="readonly")
-        self.cmb_inc_mode.set("ANY")
+        self.cmb_inc_mode = ttk.Combobox(inc_subframe, values=["ALL", "ANY"], width=5, state="readonly")
+        self.cmb_inc_mode.set("ALL")
         self.cmb_inc_mode.grid(row=0, column=2, sticky=tk.W)
 
         ttk.Label(grid, text="Exclude Keywords:").grid(row=3, column=3, sticky=tk.E, padx=(16, 4), pady=3)
         self.ent_exc = ttk.Entry(grid)
         self.ent_exc.grid(row=3, column=4, sticky=tk.EW, pady=3)
 
-        # --- Row 4: Keyword Help Examples & Search Button ---
-        lbl_inc_help = ttk.Label(
-            grid,
-            text="Comma-separated (e.g. AI, Education). Searches headline + snippet.\nANY = match any term; ALL = match all terms.",
-            font=("Segoe UI", 8, "italic"),
-            foreground="#555555",
-            wraplength=310
-        )
-        lbl_inc_help.grid(row=4, column=1, sticky=tk.W, pady=(0, 4))
+        # --- Row 4: Supabase Duplicate Check & Search Button ---
+        supabase_subframe = ttk.Frame(grid)
+        supabase_subframe.grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=(4, 4))
 
-        lbl_exc_help = ttk.Label(
-            grid,
-            text="Comma-separated (e.g. sports, finance). Searches headline + snippet.\nOmits candidates matching any term.",
-            font=("Segoe UI", 8, "italic"),
-            foreground="#555555",
-            wraplength=310
+        self.chk_supabase = ttk.Checkbutton(
+            supabase_subframe,
+            text="Check existing URLs in Supabase (read-only)",
+            variable=self.var_supabase_check,
+            command=self._on_supabase_toggled
         )
-        lbl_exc_help.grid(row=4, column=4, sticky=tk.W, pady=(0, 4))
+        self.chk_supabase.pack(anchor=tk.W)
+
+        self.lbl_mode_desc = ttk.Label(
+            supabase_subframe,
+            text="",
+            font=("Segoe UI", 8, "italic"),
+            foreground="#444444",
+            wraplength=520
+        )
+        self.lbl_mode_desc.pack(anchor=tk.W, pady=(2, 0))
 
         self.btn_search = ttk.Button(grid, text="Discover Candidates", command=self.on_discover_clicked)
         self.btn_search.grid(row=4, column=3, columnspan=2, sticky=tk.E, pady=(4, 4))
+
+        # Keyword Help Note
+        lbl_kw_help = ttk.Label(
+            param_group,
+            text="Keyword rules: Comma-separated (e.g. AI, Education). ALL (default) matches all terms; ANY with blank query queries each keyword separately.",
+            font=("Segoe UI", 8, "italic"),
+            foreground="#555555"
+        )
+        lbl_kw_help.pack(anchor=tk.W, pady=(2, 0))
 
         # Status & Progress
         self.lbl_status = ttk.Label(main_frame, text="Status: Enter query or keywords and click Discover Candidates", font=("Segoe UI", 9, "italic"))
@@ -1569,21 +1635,23 @@ class CandidateDiscoveryDialog(tk.Toplevel):
         table_group = ttk.LabelFrame(main_frame, text=" 2. Discovered Candidates Preview & Selection ", padding="8")
         table_group.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
-        columns = ("select", "platform", "title", "pub_date", "domain", "url")
+        columns = ("select", "platform", "db_status", "title", "pub_date", "domain", "url")
         self.tree = ttk.Treeview(table_group, columns=columns, show="headings", selectmode="extended")
 
         self.tree.heading("select", text="Select")
         self.tree.column("select", width=55, minwidth=40, stretch=False)
         self.tree.heading("platform", text="Platform")
         self.tree.column("platform", width=95, minwidth=60, stretch=False)
+        self.tree.heading("db_status", text="DB Status")
+        self.tree.column("db_status", width=90, minwidth=70, stretch=False)
         self.tree.heading("title", text="Headline Title")
-        self.tree.column("title", width=260, minwidth=100, stretch=True)
+        self.tree.column("title", width=250, minwidth=100, stretch=True)
         self.tree.heading("pub_date", text="Publication Date")
-        self.tree.column("pub_date", width=120, minwidth=80, stretch=False)
+        self.tree.column("pub_date", width=110, minwidth=80, stretch=False)
         self.tree.heading("domain", text="Domain")
-        self.tree.column("domain", width=110, minwidth=80, stretch=False)
+        self.tree.column("domain", width=105, minwidth=80, stretch=False)
         self.tree.heading("url", text="Validated Article URL")
-        self.tree.column("url", width=220, minwidth=100, stretch=True)
+        self.tree.column("url", width=200, minwidth=100, stretch=True)
 
         v_scroll = ttk.Scrollbar(table_group, orient=tk.VERTICAL, command=self.tree.yview)
         h_scroll = ttk.Scrollbar(table_group, orient=tk.HORIZONTAL, command=self.tree.xview)
@@ -1607,6 +1675,71 @@ class CandidateDiscoveryDialog(tk.Toplevel):
 
         btn_import = ttk.Button(action_bar, text="Import Selected Candidates to URL Input", command=self._on_import_clicked)
         btn_import.pack(side=tk.RIGHT)
+
+        self._update_mode_description()
+
+    def _on_source_toggled(self):
+        """Enables or disables target entry fields when source checkboxes are toggled."""
+        if not self.var_legacy_mode.get():
+            if self.var_yahoo.get():
+                self.ent_target_yahoo.config(state=tk.NORMAL)
+            else:
+                self.ent_target_yahoo.config(state=tk.DISABLED)
+
+            if self.var_msn.get():
+                self.ent_target_msn.config(state=tk.NORMAL)
+            else:
+                self.ent_target_msn.config(state=tk.DISABLED)
+        self._update_mode_description()
+
+    def _on_legacy_toggled(self):
+        """Toggles between per-source targeted mode and legacy combined max candidates mode."""
+        if self.var_legacy_mode.get():
+            self.ent_max.config(state=tk.NORMAL)
+            self.ent_target_yahoo.config(state=tk.DISABLED)
+            self.ent_target_msn.config(state=tk.DISABLED)
+            self.chk_supabase.config(state=tk.DISABLED)
+        else:
+            self.ent_max.config(state=tk.DISABLED)
+            self.chk_supabase.config(state=tk.NORMAL)
+            if self.var_yahoo.get():
+                self.ent_target_yahoo.config(state=tk.NORMAL)
+            if self.var_msn.get():
+                self.ent_target_msn.config(state=tk.NORMAL)
+        self._update_mode_description()
+
+    def _on_supabase_toggled(self):
+        """Updates the descriptive text when the Supabase check box is toggled."""
+        self._update_mode_description()
+
+    def _update_mode_description(self, *args):
+        """Updates subtitle text explaining the exact discovery outcome."""
+        if not hasattr(self, "lbl_mode_desc"):
+            return
+        if self.var_legacy_mode.get():
+            max_raw = self.var_max.get().strip() if hasattr(self, "var_max") else (self.ent_max.get().strip() if hasattr(self, "ent_max") else "20")
+            max_val = max_raw if max_raw else "[target unset]"
+            self.lbl_mode_desc.config(
+                text=f"Legacy discovery mode: Find up to {max_val} total candidates across enabled sources (database check not used)."
+            )
+            return
+
+        y_raw = self.var_target_yahoo.get().strip() if hasattr(self, "var_target_yahoo") else (self.ent_target_yahoo.get().strip() if hasattr(self, "ent_target_yahoo") else "50")
+        y_val = y_raw if y_raw else "[target unset]"
+        m_raw = self.var_target_msn.get().strip() if hasattr(self, "var_target_msn") else (self.ent_target_msn.get().strip() if hasattr(self, "ent_target_msn") else "50")
+        m_val = m_raw if m_raw else "[target unset]"
+        y_str = f"{y_val} from Yahoo News" if self.var_yahoo.get() else ""
+        m_str = f"{m_val} from MSN" if self.var_msn.get() else ""
+        sources_str = " and ".join(s for s in [y_str, m_str] if s) or "0 from selected sources"
+
+        if self.var_supabase_check.get():
+            self.lbl_mode_desc.config(
+                text=f"Database-checked targeted discovery: Find up to {sources_str}, excluding matches in accessible Supabase records (subject to database permissions / RLS)."
+            )
+        else:
+            self.lbl_mode_desc.config(
+                text=f"Unchecked targeted discovery: Find up to {sources_str}; database uniqueness is NOT verified."
+            )
 
     def _on_tree_click(self, event):
         """Toggles check state when clicking the select column."""
@@ -1638,7 +1771,7 @@ class CandidateDiscoveryDialog(tk.Toplevel):
 
         query = self.ent_query.get().strip()
         inc_kws = [k.strip() for k in self.ent_inc.get().split(",") if k.strip()]
-        inc_mode = (self.cmb_inc_mode.get() or "ANY").strip().upper()
+        inc_mode = (self.cmb_inc_mode.get() or "ALL").strip().upper()
         exc_kws = [k.strip() for k in self.ent_exc.get().split(",") if k.strip()]
 
         if not query and not inc_kws:
@@ -1649,12 +1782,64 @@ class CandidateDiscoveryDialog(tk.Toplevel):
             messagebox.showwarning("Input Error", "Please select at least one source (Yahoo News or MSN).")
             return
 
-        try:
-            max_cands = int(self.ent_max.get().strip())
-        except ValueError:
-            messagebox.showerror("Input Error", "Max Candidates must be a valid integer.")
-            return
+        is_legacy = self.var_legacy_mode.get()
+        max_cands = None
+        target_yahoo = None
+        target_msn = None
 
+        if is_legacy:
+            try:
+                max_cands = int(self.ent_max.get().strip())
+                if max_cands <= 0:
+                    raise ValueError()
+            except ValueError:
+                messagebox.showerror("Input Error", "Max Candidates must be a positive integer.")
+                return
+        else:
+            if self.var_yahoo.get():
+                try:
+                    target_yahoo = int(self.ent_target_yahoo.get().strip())
+                    if target_yahoo < 0:
+                        raise ValueError()
+                except ValueError:
+                    messagebox.showerror("Input Error", "Yahoo News target must be a non-negative integer.")
+                    return
+            else:
+                target_yahoo = 0
+
+            if self.var_msn.get():
+                try:
+                    target_msn = int(self.ent_target_msn.get().strip())
+                    if target_msn < 0:
+                        raise ValueError()
+                except ValueError:
+                    messagebox.showerror("Input Error", "MSN target must be a non-negative integer.")
+                    return
+            else:
+                target_msn = 0
+
+            if (target_yahoo or 0) + (target_msn or 0) <= 0:
+                messagebox.showerror("Input Error", "At least one selected source must have a target greater than 0.")
+                return
+
+        do_supabase_check = self.var_supabase_check.get() and not is_legacy
+        if do_supabase_check:
+            # Check local config without network request
+            try:
+                cfg = self._supabase_config_override if self._supabase_config_override is not None else load_supabase_config()
+                if not cfg.is_configured():
+                    messagebox.showerror(
+                        "Supabase Configuration Missing",
+                        "Supabase connection parameters are not configured locally.\n\n"
+                        "Please configure Supabase connection parameters in settings, or uncheck "
+                        "'Check existing URLs in Supabase' to run unchecked discovery."
+                    )
+                    return
+            except Exception as e:
+                messagebox.showerror("Configuration Error", f"Failed to read local Supabase configuration:\n{str(e)}")
+                return
+
+        self.cancel_event.clear()
         self.is_discovering = True
         self.btn_search.config(state=tk.DISABLED)
         status_query = query if query else ", ".join(inc_kws)
@@ -1671,33 +1856,193 @@ class CandidateDiscoveryDialog(tk.Toplevel):
 
         thread = threading.Thread(
             target=self._worker_discover_task,
-            args=(query, self.var_yahoo.get(), self.var_msn.get(), max_cands, inc_kws, inc_mode, exc_kws),
+            args=(
+                query,
+                self.var_yahoo.get(),
+                self.var_msn.get(),
+                target_yahoo,
+                target_msn,
+                max_cands,
+                inc_kws,
+                inc_mode,
+                exc_kws,
+                do_supabase_check
+            ),
             daemon=True
         )
         thread.start()
         self.after(100, self._poll_discovery_queue)
 
-    def _worker_discover_task(self, query, inc_yahoo, inc_msn, max_cands, inc_kws, inc_mode, exc_kws):
+    def _safe_queue_put(self, item):
+        """Safely enqueues a message for the UI thread, ignoring puts if cancelled or closing."""
+        if hasattr(self, "cancel_event") and self.cancel_event.is_set():
+            return
         try:
+            self.queue.put_nowait(item)
+        except Exception:
+            pass
+
+    def _worker_discover_task(
+        self,
+        query: str,
+        inc_yahoo: bool,
+        inc_msn: bool,
+        target_yahoo: Optional[int],
+        target_msn: Optional[int],
+        max_cands: Optional[int],
+        inc_kws: List[str],
+        inc_mode: str,
+        exc_kws: List[str],
+        do_supabase_check: bool
+    ):
+        try:
+            if self.cancel_event.is_set():
+                return
+            snapshot = None
+            if do_supabase_check:
+                self._safe_queue_put(("STATUS", "Connecting to Supabase (read-only) and fetching accessible article URLs..."))
+                if self._url_checker_override is not None:
+                    checker = self._url_checker_override
+                else:
+                    cfg = self._supabase_config_override if self._supabase_config_override is not None else load_supabase_config()
+                    client = SupabaseClient(config=cfg)
+                    checker = SupabaseUrlChecker(client=client)
+
+                if self.cancel_event.is_set():
+                    return
+
+                snapshot = checker.fetch_accessible_snapshot()
+
+                if self.cancel_event.is_set():
+                    return
+
+                if not snapshot.is_verified_accessible:
+                    params = {
+                        "query": query,
+                        "inc_yahoo": inc_yahoo,
+                        "inc_msn": inc_msn,
+                        "target_yahoo": target_yahoo,
+                        "target_msn": target_msn,
+                        "max_cands": max_cands,
+                        "inc_kws": inc_kws,
+                        "inc_mode": inc_mode,
+                        "exc_kws": exc_kws
+                    }
+                    self._safe_queue_put(("SNAPSHOT_FAILED", snapshot.error_message or "Supabase retrieval failed", params))
+                    return
+                else:
+                    self._safe_queue_put(("STATUS", f"Loaded {snapshot.valid_urls_loaded} accessible Supabase URL(s). Discovering new candidates..."))
+            else:
+                self._safe_queue_put(("STATUS", "Discovering candidates (unchecked discovery)..."))
+
+            if self.cancel_event.is_set():
+                return
+
             discoverer = CandidateDiscoverer()
             cands = discoverer.discover(
                 query=query,
                 include_yahoo=inc_yahoo,
                 include_msn=inc_msn,
-                max_candidates=max_cands,
+                target_yahoo=target_yahoo,
+                target_msn=target_msn,
+                max_candidates=max_cands if max_cands is not None else 20,
                 include_keywords=inc_kws,
                 include_keyword_mode=inc_mode,
-                exclude_keywords=exc_kws
+                exclude_keywords=exc_kws,
+                supabase_snapshot=snapshot,
+                http_fetcher=self._http_fetcher_override,
+                cancel_event=self.cancel_event
             )
-            self.queue.put(("DONE", cands, query, discoverer.last_diagnostics))
+
+            if self.cancel_event.is_set():
+                return
+
+            self._safe_queue_put(("DONE", cands, query, discoverer.last_diagnostics))
         except Exception as e:
-            self.queue.put(("ERROR", str(e)))
+            if not self.cancel_event.is_set():
+                self._safe_queue_put(("ERROR", str(e)))
+
+    def _start_unchecked_discovery(self, params: Dict[str, Any]):
+        """Starts an explicit unchecked discovery fallback after snapshot retrieval failure."""
+        self.cancel_event.clear()
+        self.is_discovering = True
+        self.btn_search.config(state=tk.DISABLED)
+        status_query = params["query"] if params["query"] else ", ".join(params["inc_kws"])
+        self.lbl_status.config(text=f"Status: Discovering candidates (unchecked fallback) for '{status_query}'...")
+        if hasattr(self, "txt_diagnostics"):
+            self.txt_diagnostics.config(state=tk.NORMAL)
+            self.txt_diagnostics.delete("1.0", tk.END)
+            self.txt_diagnostics.insert(tk.END, f"Starting unchecked discovery for '{status_query}' (database verification disabled)...\n")
+            self.txt_diagnostics.config(state=tk.DISABLED)
+
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        thread = threading.Thread(
+            target=self._worker_discover_task,
+            args=(
+                params["query"],
+                params["inc_yahoo"],
+                params["inc_msn"],
+                params["target_yahoo"],
+                params["target_msn"],
+                params["max_cands"],
+                params["inc_kws"],
+                params["inc_mode"],
+                params["exc_kws"],
+                False  # do_supabase_check = False
+            ),
+            daemon=True
+        )
+        thread.start()
+        self.after(100, self._poll_discovery_queue)
 
     def _poll_discovery_queue(self):
         try:
+            if not self.winfo_exists():
+                return
+        except Exception:
+            return
+
+        if self.cancel_event.is_set():
+            return
+
+        try:
             while True:
                 msg = self.queue.get_nowait()
-                if msg[0] == "DONE":
+                msg_type = msg[0]
+
+                if msg_type == "STATUS":
+                    status_text = msg[1]
+                    self.lbl_status.config(text=f"Status: {status_text}")
+
+                elif msg_type == "SNAPSHOT_FAILED":
+                    _, err_msg, params = msg
+                    self.is_discovering = False
+                    self.btn_search.config(state=tk.NORMAL)
+                    self.lbl_status.config(text="Status: Supabase URL snapshot retrieval failed.")
+                    if hasattr(self, "txt_diagnostics"):
+                        self.txt_diagnostics.config(state=tk.NORMAL)
+                        self.txt_diagnostics.delete("1.0", tk.END)
+                        self.txt_diagnostics.insert(
+                            tk.END,
+                            f"Supabase Verification Error:\n{err_msg}\n\n"
+                            "Targeted discovery halted because complete accessible snapshot was not retrieved."
+                        )
+                        self.txt_diagnostics.config(state=tk.DISABLED)
+
+                    proceed = messagebox.askyesno(
+                        "Supabase Verification Failed",
+                        f"Could not retrieve existing article URLs from Supabase:\n\n{err_msg}\n\n"
+                        "Do you want to proceed with UNCHECKED discovery?\n\n"
+                        "• YES: Run unchecked discovery (every candidate will be marked as 'Unverified', and targets will NOT be confirmed in database).\n"
+                        "• NO: Cancel discovery and keep current settings."
+                    )
+                    if proceed:
+                        self._start_unchecked_discovery(params)
+                    return
+
+                elif msg_type == "DONE":
                     if len(msg) >= 4:
                         _, cands, query, diagnostics = msg
                     else:
@@ -1715,7 +2060,22 @@ class CandidateDiscoveryDialog(tk.Toplevel):
                     else:
                         date_msg = ""
 
-                    self.lbl_status.config(text=f"Status: Discovered {len(cands)} candidate article(s).{date_msg}")
+                    is_cancelled = (diagnostics and diagnostics.overall_termination == "cancelled")
+                    is_blocked = (diagnostics and diagnostics.overall_termination == "http_blocked")
+                    is_verified = (diagnostics and diagnostics.db_verification_status in ("complete", "empty"))
+
+                    if is_cancelled:
+                        status_summary = f"Discovery cancelled. {len(cands)} partial candidate article(s) collected."
+                    elif is_blocked:
+                        status_summary = f"Search blocked (HTTP 403/429). {len(cands)} partial candidate article(s) collected."
+                    elif is_verified:
+                        conf_total = (diagnostics.yahoo.confirmed_new_candidates + diagnostics.msn.confirmed_new_candidates) if diagnostics else len(cands)
+                        status_summary = f"Discovered {len(cands)} candidate article(s) ({conf_total} new relative to accessible Supabase URLs; not yet inserted into database)."
+                    else:
+                        status_summary = f"Discovered {len(cands)} candidate article(s) (Unverified; database uniqueness not checked)."
+
+                    self.lbl_status.config(text=f"Status: {status_summary}{date_msg}")
+
                     if hasattr(self, "txt_diagnostics"):
                         self.txt_diagnostics.config(state=tk.NORMAL)
                         self.txt_diagnostics.delete("1.0", tk.END)
@@ -1728,20 +2088,27 @@ class CandidateDiscoveryDialog(tk.Toplevel):
                     self.btn_search.config(state=tk.NORMAL)
                     self.is_discovering = False
 
+                    # Populate treeview
+                    for item in self.tree.get_children():
+                        self.tree.delete(item)
+
                     for i, c in enumerate(cands):
                         pub_str = c.publication_date[:10] if c.publication_date else "N/A"
+                        db_label = "New" if c.db_status == "db_verified_new" else "Unverified"
                         self.tree.insert("", tk.END, iid=str(i), values=(
                             "[X]",
                             c.platform,
+                            db_label,
                             c.title,
                             pub_str,
                             c.source_domain,
                             c.url
                         ))
                     return
-                elif msg[0] == "ERROR":
+
+                elif msg_type == "ERROR":
                     _, err = msg
-                    self.lbl_status.config(text=f"Status: Discovery error")
+                    self.lbl_status.config(text="Status: Discovery error")
                     if hasattr(self, "txt_diagnostics"):
                         self.txt_diagnostics.config(state=tk.NORMAL)
                         self.txt_diagnostics.delete("1.0", tk.END)
@@ -1754,15 +2121,19 @@ class CandidateDiscoveryDialog(tk.Toplevel):
         except queue.Empty:
             pass
 
-        if self.is_discovering:
-            self.after(100, self._poll_discovery_queue)
+        if self.is_discovering and not self.cancel_event.is_set():
+            try:
+                if self.winfo_exists():
+                    self.after(100, self._poll_discovery_queue)
+            except Exception:
+                pass
 
     def _on_import_clicked(self):
         selected_urls = []
         for item in self.tree.get_children():
             vals = self.tree.item(item, "values")
             if vals[0] == "[X]":
-                url = vals[5]
+                url = vals[6]  # URL is index 6
                 selected_urls.append(url)
 
         if not selected_urls:
@@ -1773,6 +2144,15 @@ class CandidateDiscoveryDialog(tk.Toplevel):
         if self.on_import_callback:
             self.on_import_callback(selected_urls, query)
 
+        self.destroy()
+
+    def _on_close_dialog(self):
+        """Safely handles window closure while discovery worker may be active."""
+        if self.is_discovering:
+            if not messagebox.askyesno("Discovery in Progress", "Candidate discovery is currently in progress. Are you sure you want to cancel and close?"):
+                return
+            self.cancel_event.set()
+        self.is_discovering = False
         self.destroy()
 
 

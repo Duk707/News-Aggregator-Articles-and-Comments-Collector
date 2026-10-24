@@ -26,6 +26,14 @@ from src.models.article import Article
 from src.models.comment_status import CommentStatus
 
 
+@pytest.fixture(autouse=True)
+def isolate_supabase_config(monkeypatch):
+    """Ensures no GUI tests read data/config/supabase_client_config.json from disk."""
+    from src.integrations.supabase.config import SupabaseClientConfig
+    unconfigured = SupabaseClientConfig(supabase_url="", supabase_anon_key="")
+    monkeypatch.setattr("src.gui.app.load_supabase_config", lambda: unconfigured)
+
+
 def test_gui_url_input_parsing():
     """Verifies parsing of multiline raw text input into clean URL lists."""
     assert parse_url_input("") == []
@@ -1366,6 +1374,549 @@ def test_gui_workspace_centering_and_maximize_restore():
     root.destroy()
 
 
+def test_gui_candidate_discovery_dialog_initial_state():
+    """Verifies that CandidateDiscoveryDialog initializes with correct default widgets and states."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+
+    root = tk.Tk()
+    root.withdraw()
+
+    dialog = CandidateDiscoveryDialog(root, initial_topic="AI in Education")
+
+    assert dialog.title() == "Candidate Article Discovery & Preview"
+    assert dialog.ent_query.get() == "AI in Education"
+    assert dialog.var_yahoo.get() is True
+    assert dialog.var_msn.get() is True
+    assert dialog.var_target_yahoo.get() == "50"
+    assert dialog.var_target_msn.get() == "50"
+    assert dialog.var_legacy_mode.get() is False
+    assert dialog.var_max.get() == "20"
+    assert str(dialog.ent_max.cget("state")) == "disabled"
+    assert dialog.cmb_inc_mode.get() == "ALL"
+
+    dialog.destroy()
+    root.destroy()
+
+
+def test_gui_discovery_dialog_source_toggling():
+    """Verifies that unchecking Yahoo or MSN disables the corresponding target entry."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+
+    root = tk.Tk()
+    root.withdraw()
+
+    dialog = CandidateDiscoveryDialog(root, initial_topic="AI in Education")
+
+    # Disable Yahoo
+    dialog.var_yahoo.set(False)
+    dialog._on_source_toggled()
+    assert str(dialog.ent_target_yahoo.cget("state")) == "disabled"
+    assert str(dialog.ent_target_msn.cget("state")) == "normal"
+    assert "50 from MSN" in dialog.lbl_mode_desc.cget("text")
+
+    # Disable both
+    dialog.var_msn.set(False)
+    dialog._on_source_toggled()
+    assert str(dialog.ent_target_yahoo.cget("state")) == "disabled"
+    assert str(dialog.ent_target_msn.cget("state")) == "disabled"
+    assert "0 from selected sources" in dialog.lbl_mode_desc.cget("text")
+
+    # Re-enable both
+    dialog.var_yahoo.set(True)
+    dialog.var_msn.set(True)
+    dialog._on_source_toggled()
+    assert str(dialog.ent_target_yahoo.cget("state")) == "normal"
+    assert str(dialog.ent_target_msn.cget("state")) == "normal"
+    assert "50 from Yahoo News and 50 from MSN" in dialog.lbl_mode_desc.cget("text")
+
+    dialog.destroy()
+    root.destroy()
+
+
+def test_gui_discovery_dialog_legacy_mode_toggle():
+    """Verifies toggling legacy mode switches between per-source targets and combined max candidates with default 20."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+
+    root = tk.Tk()
+    root.withdraw()
+
+    dialog = CandidateDiscoveryDialog(root, initial_topic="AI in Education")
+
+    # 1. On open, ent_max is initialized to "20" but disabled
+    assert dialog.ent_max.get() == "20"
+    assert str(dialog.ent_max.cget("state")) == "disabled"
+
+    # 2. Activate legacy mode: field becomes normal and contains "20"
+    dialog.var_legacy_mode.set(True)
+    dialog._on_legacy_toggled()
+    assert str(dialog.ent_max.cget("state")) == "normal"
+    assert dialog.ent_max.get() == "20"
+    assert str(dialog.ent_target_yahoo.cget("state")) == "disabled"
+    assert str(dialog.ent_target_msn.cget("state")) == "disabled"
+    assert str(dialog.chk_supabase.cget("state")) == "disabled"
+    assert "Legacy discovery mode" in dialog.lbl_mode_desc.cget("text")
+
+    # 3. Deactivate legacy mode: field disabled, value remains "20"
+    dialog.var_legacy_mode.set(False)
+    dialog._on_legacy_toggled()
+    assert str(dialog.ent_max.cget("state")) == "disabled"
+    assert dialog.ent_max.get() == "20"
+    assert str(dialog.ent_target_yahoo.cget("state")) == "normal"
+    assert str(dialog.ent_target_msn.cget("state")) == "normal"
+    assert str(dialog.chk_supabase.cget("state")) == "normal"
+    assert "targeted discovery" in dialog.lbl_mode_desc.cget("text")
+
+    # 4. Reactivate legacy mode: field normal again, value still "20"
+    dialog.var_legacy_mode.set(True)
+    dialog._on_legacy_toggled()
+    assert str(dialog.ent_max.cget("state")) == "normal"
+    assert dialog.ent_max.get() == "20"
+
+    dialog.destroy()
+    root.destroy()
+
+
+def test_gui_discovery_dialog_treeview_db_status_column():
+    """Verifies treeview DB Status column displays New vs Unverified and import picks correct URL."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+    from src.discovery.models import CandidateArticle, DiscoveryRunDiagnostics, SourceDiscoveryDiagnostics
+
+    root = tk.Tk()
+    root.withdraw()
+
+    imported_urls = []
+    def callback(urls, q):
+        imported_urls.extend(urls)
+
+    dialog = CandidateDiscoveryDialog(root, initial_topic="AI in Education", on_import_callback=callback)
+
+    cols = dialog.tree.cget("columns")
+    assert "db_status" in cols
+    assert dialog.tree.heading("db_status")["text"] == "DB Status"
+
+    cand1 = CandidateArticle(
+        title="Verified Story",
+        url="https://news.yahoo.com/verified-story.html",
+        platform="Yahoo News",
+        source_domain="news.yahoo.com",
+        discovery_query="AI",
+        discovered_at="2026-09-26T00:00:00Z",
+        db_status="db_verified_new"
+    )
+    cand2 = CandidateArticle(
+        title="Unverified Story",
+        url="https://www.msn.com/en-us/news/ar-unverified",
+        platform="MSN",
+        source_domain="www.msn.com",
+        discovery_query="AI",
+        discovered_at="2026-09-26T00:00:00Z",
+        db_status="unverified"
+    )
+
+    diag = DiscoveryRunDiagnostics(
+        yahoo=SourceDiscoveryDiagnostics(source_name="Yahoo News", confirmed_new_candidates=1),
+        msn=SourceDiscoveryDiagnostics(source_name="MSN", unverified_candidates=1),
+        total_candidates_returned=2,
+        overall_termination="completed",
+        db_verification_status="complete"
+    )
+
+    dialog.queue.put(("DONE", [cand1, cand2], "AI in Education", diag))
+    dialog._poll_discovery_queue()
+
+    children = dialog.tree.get_children()
+    assert len(children) == 2
+
+    vals0 = dialog.tree.item(children[0], "values")
+    assert vals0[0] == "[X]"
+    assert vals0[1] == "Yahoo News"
+    assert vals0[2] == "New"
+    assert vals0[6] == "https://news.yahoo.com/verified-story.html"
+
+    vals1 = dialog.tree.item(children[1], "values")
+    assert vals1[0] == "[X]"
+    assert vals1[1] == "MSN"
+    assert vals1[2] == "Unverified"
+    assert vals1[6] == "https://www.msn.com/en-us/news/ar-unverified"
+
+    dialog.tree.item(children[1], values=("[  ]", vals1[1], vals1[2], vals1[3], vals1[4], vals1[5], vals1[6]))
+
+    dialog._on_import_clicked()
+    assert len(imported_urls) == 1
+    assert imported_urls[0] == "https://news.yahoo.com/verified-story.html"
+
+    root.destroy()
+
+
+def test_gui_discovery_dialog_worker_with_mocked_supabase_snapshot():
+    """Verifies worker loads snapshot and runs targeted discovery without live requests or database writes."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+    from src.integrations.supabase.url_checker import UrlCheckerSnapshot, UrlRetrievalStatus, StoredUrlRecord
+
+    root = tk.Tk()
+    root.withdraw()
+
+    class MockChecker:
+        def fetch_accessible_snapshot(self):
+            return UrlCheckerSnapshot(
+                status=UrlRetrievalStatus.COMPLETE,
+                total_records_read=5,
+                valid_urls_loaded=1,
+                records_by_key={"https://news.yahoo.com/duplicate.html": StoredUrlRecord(id=1, original_url="https://news.yahoo.com/duplicate.html", normalized_key="https://news.yahoo.com/duplicate.html")}
+            )
+
+    feed = """<?xml version="1.0" encoding="utf-8"?>
+    <rss version="2.0">
+      <channel>
+        <title>Bing News</title>
+        <item>
+          <title>AI In Higher Education</title>
+          <link>https://news.yahoo.com/duplicate.html</link>
+          <pubDate>Fri, 25 Sep 2026 14:30:00 GMT</pubDate>
+        </item>
+        <item>
+          <title>AI In Classrooms</title>
+          <link>https://news.yahoo.com/fresh-story.html</link>
+          <pubDate>Fri, 25 Sep 2026 14:30:00 GMT</pubDate>
+        </item>
+      </channel>
+    </rss>"""
+
+    class MockResp:
+        status_code = 200
+        text = feed
+
+    def mock_fetcher(url, params=None, headers=None, timeout=None):
+        return MockResp()
+
+    dialog = CandidateDiscoveryDialog(
+        root,
+        initial_topic="AI in Education",
+        url_checker=MockChecker(),
+        http_fetcher=mock_fetcher
+    )
+    dialog.var_supabase_check.set(True)
+
+    dialog._worker_discover_task(
+        query="AI education",
+        inc_yahoo=True,
+        inc_msn=False,
+        target_yahoo=1,
+        target_msn=0,
+        max_cands=None,
+        inc_kws=[],
+        inc_mode="ALL",
+        exc_kws=[],
+        do_supabase_check=True
+    )
+
+    messages = []
+    while not dialog.queue.empty():
+        messages.append(dialog.queue.get_nowait())
+
+    done_msgs = [m for m in messages if m[0] == "DONE"]
+    assert len(done_msgs) == 1
+    _, cands, query, diag = done_msgs[0]
+
+    assert len(cands) == 1
+    assert cands[0].url == "https://news.yahoo.com/fresh-story.html"
+    assert cands[0].db_status == "db_verified_new"
+    assert diag.yahoo.confirmed_new_candidates == 1
+    assert diag.yahoo.db_duplicates_excluded == 1
+
+    dialog.destroy()
+    root.destroy()
+
+
+def test_gui_discovery_dialog_snapshot_failure_and_user_prompt(monkeypatch):
+    """Verifies that snapshot failure halts checked discovery and prompts user before unchecked fallback."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+    from src.integrations.supabase.url_checker import UrlCheckerSnapshot, UrlRetrievalStatus, StoredUrlRecord
+
+    root = tk.Tk()
+    root.withdraw()
+
+    class FailingChecker:
+        def fetch_accessible_snapshot(self):
+            return UrlCheckerSnapshot(
+                status=UrlRetrievalStatus.AUTH_ERROR,
+                total_records_read=0,
+                valid_urls_loaded=0,
+                error_message="HTTP 401 Unauthorized"
+            )
+
+    dialog = CandidateDiscoveryDialog(
+        root,
+        initial_topic="AI in Education",
+        url_checker=FailingChecker()
+    )
+    dialog.var_supabase_check.set(True)
+
+    dialog._worker_discover_task(
+        query="AI education",
+        inc_yahoo=True,
+        inc_msn=False,
+        target_yahoo=5,
+        target_msn=0,
+        max_cands=None,
+        inc_kws=[],
+        inc_mode="ALL",
+        exc_kws=[],
+        do_supabase_check=True
+    )
+
+    asked = []
+    monkeypatch.setattr("tkinter.messagebox.askyesno", lambda title, msg: asked.append((title, msg)) or False)
+
+    dialog._poll_discovery_queue()
+    assert len(asked) == 1
+    assert "Supabase Verification Failed" in asked[0][0]
+    assert dialog.is_discovering is False
+    assert dialog.var_supabase_check.get() is True
+    assert "Supabase Verification Error" in dialog.txt_diagnostics.get("1.0", tk.END)
+
+    fallback_started = False
+    def mock_start_fallback(params):
+        nonlocal fallback_started
+        fallback_started = True
+
+    dialog._start_unchecked_discovery = mock_start_fallback
+    monkeypatch.setattr("tkinter.messagebox.askyesno", lambda title, msg: True)
+
+    dialog.queue.put(("SNAPSHOT_FAILED", "Network timeout", {"query": "AI"}))
+    dialog._poll_discovery_queue()
+    assert fallback_started is True
+
+    dialog.destroy()
+    root.destroy()
+
+
+def test_gui_discovery_dialog_missing_config_error(monkeypatch):
+    """Verifies that missing local Supabase config displays error, prevents discovery, and keeps checkbox checked."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+    from src.integrations.supabase.config import SupabaseClientConfig
+
+    root = tk.Tk()
+    root.withdraw()
+
+    monkeypatch.setattr("src.gui.app.load_supabase_config", lambda: SupabaseClientConfig(supabase_url="", supabase_anon_key=""))
+
+    dialog = CandidateDiscoveryDialog(root, initial_topic="AI in Education")
+    dialog.var_supabase_check.set(True)
+
+    errors_shown = []
+    monkeypatch.setattr("tkinter.messagebox.showerror", lambda title, msg: errors_shown.append((title, msg)))
+
+    dialog.on_discover_clicked()
+    assert len(errors_shown) == 1
+    assert "Supabase Configuration Missing" in errors_shown[0][0]
+    assert dialog.is_discovering is False
+    assert dialog.var_supabase_check.get() is True
+
+    dialog.destroy()
+    root.destroy()
+
+
+def test_gui_discovery_dialog_safe_close_while_worker_running(monkeypatch):
+    """Verifies that attempting to close dialog during discovery prompts user, sets cancel_event, and cancels safely."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+
+    root = tk.Tk()
+    root.withdraw()
+
+    dialog = CandidateDiscoveryDialog(root, initial_topic="AI in Education")
+    dialog.is_discovering = True
+
+    monkeypatch.setattr("tkinter.messagebox.askyesno", lambda title, msg: False)
+    dialog._on_close_dialog()
+    assert dialog.winfo_exists()
+    assert not dialog.cancel_event.is_set()
+
+    monkeypatch.setattr("tkinter.messagebox.askyesno", lambda title, msg: True)
+    dialog._on_close_dialog()
+    assert dialog.cancel_event.is_set()
+    assert not dialog.winfo_exists()
+
+    root.destroy()
+
+
+def test_gui_discovery_dialog_default_checkbox_states():
+    """Verifies that default Supabase checkbox state matches configuration presence without touching disk files."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+    from src.integrations.supabase.config import SupabaseClientConfig
+
+    root = tk.Tk()
+    root.withdraw()
+
+    unconfigured = SupabaseClientConfig(supabase_url="", supabase_anon_key="")
+    d1 = CandidateDiscoveryDialog(root, supabase_config=unconfigured)
+    assert d1.var_supabase_check.get() is False
+    d1.destroy()
+
+    configured = SupabaseClientConfig(supabase_url="https://test.supabase.co", supabase_anon_key="test-anon-key")
+    d2 = CandidateDiscoveryDialog(root, supabase_config=configured)
+    assert d2.var_supabase_check.get() is True
+    d2.destroy()
+
+    root.destroy()
+
+
+def test_gui_discovery_dialog_worker_cancellation_guards():
+    """Verifies that worker task checks cancel_event before snapshot, after snapshot, and before/after discover."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+
+    root = tk.Tk()
+    root.withdraw()
+
+    dialog = CandidateDiscoveryDialog(root)
+    dialog.cancel_event.set()
+
+    dialog._worker_discover_task(
+        query="AI",
+        inc_yahoo=True,
+        inc_msn=False,
+        target_yahoo=5,
+        target_msn=0,
+        max_cands=None,
+        inc_kws=[],
+        inc_mode="ALL",
+        exc_kws=[],
+        do_supabase_check=False
+    )
+    assert dialog.queue.empty()
+
+    dialog.destroy()
+    root.destroy()
+
+
+def test_gui_discovery_dialog_wording_distinctions():
+    """Verifies precise wording distinctions for verified, unverified, and cancelled discovery results."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+    from src.discovery.models import DiscoveryRunDiagnostics, SourceDiscoveryDiagnostics, CandidateArticle
+
+    root = tk.Tk()
+    root.withdraw()
+
+    dialog = CandidateDiscoveryDialog(root)
+
+    # 1. Database-verified result
+    diag_verified = DiscoveryRunDiagnostics(
+        yahoo=SourceDiscoveryDiagnostics(source_name="Yahoo News", confirmed_new_candidates=3),
+        msn=SourceDiscoveryDiagnostics(source_name="MSN", confirmed_new_candidates=2),
+        db_verification_status="complete",
+        overall_termination="completed"
+    )
+    cands = [
+        CandidateArticle(
+            url=f"https://news.yahoo.com/art-{i}.html",
+            title=f"Art {i}",
+            source_domain="yahoo.com",
+            platform="Yahoo News",
+            discovery_query="AI",
+            discovered_at="2026-10-18T12:00:00Z",
+            db_status="db_verified_new"
+        )
+        for i in range(5)
+    ]
+    dialog.queue.put(("DONE", cands, "AI", diag_verified))
+    dialog._poll_discovery_queue()
+    status_txt = dialog.lbl_status.cget("text")
+    assert "new relative to accessible Supabase URLs; not yet inserted into database" in status_txt
+    assert "confirmed new in Supabase" not in status_txt
+
+    # 2. Unverified result
+    diag_unverified = DiscoveryRunDiagnostics(
+        yahoo=SourceDiscoveryDiagnostics(source_name="Yahoo News", unverified_candidates=5),
+        msn=SourceDiscoveryDiagnostics(source_name="MSN"),
+        db_verification_status="disabled",
+        overall_termination="completed_unverified"
+    )
+    dialog.queue.put(("DONE", cands, "AI", diag_unverified))
+    dialog._poll_discovery_queue()
+    status_txt = dialog.lbl_status.cget("text")
+    assert "Unverified; database uniqueness not checked" in status_txt
+
+    # 3. Cancelled result
+    diag_cancelled = DiscoveryRunDiagnostics(
+        overall_termination="cancelled"
+    )
+    dialog.queue.put(("DONE", cands[:1], "AI", diag_cancelled))
+    dialog._poll_discovery_queue()
+    status_txt = dialog.lbl_status.cget("text")
+    assert "Discovery cancelled. 1 partial candidate article(s) collected." in status_txt
+
+    dialog.destroy()
+    root.destroy()
+
+
+def test_gui_discovery_dialog_dynamic_target_description_synchronization():
+    """Verifies that target changes update the description dynamically, including empty field handling."""
+    import tkinter as tk
+    from src.gui.app import CandidateDiscoveryDialog
+
+    root = tk.Tk()
+    root.withdraw()
+
+    dialog = CandidateDiscoveryDialog(root, initial_topic="AI in Education")
+
+    # 1. Default description
+    desc = dialog.lbl_mode_desc.cget("text")
+    assert "50 from Yahoo News and 50 from MSN" in desc
+
+    # 2. Programmatic / typing update of Yahoo and MSN targets
+    dialog.var_target_yahoo.set("2")
+    dialog.var_target_msn.set("2")
+    desc = dialog.lbl_mode_desc.cget("text")
+    assert "2 from Yahoo News and 2 from MSN" in desc
+
+    # 3. Temporarily empty field produces [target unset] rather than a misleading fallback
+    dialog.var_target_yahoo.set("")
+    desc = dialog.lbl_mode_desc.cget("text")
+    assert "[target unset] from Yahoo News and 2 from MSN" in desc
+
+    dialog.var_target_msn.set("")
+    desc = dialog.lbl_mode_desc.cget("text")
+    assert "[target unset] from Yahoo News and [target unset] from MSN" in desc
+
+    # 4. Entry widget insertion reflects in textvariable and description
+    dialog.ent_target_yahoo.insert(0, "10")
+    dialog.ent_target_msn.insert(0, "15")
+    desc = dialog.lbl_mode_desc.cget("text")
+    assert "10 from Yahoo News and 15 from MSN" in desc
+
+    # 5. Legacy mode synchronization
+    dialog.var_legacy_mode.set(True)
+    dialog._on_legacy_toggled()
+    desc = dialog.lbl_mode_desc.cget("text")
+    assert "Legacy discovery mode: Find up to 20 total candidates" in desc
+
+    dialog.var_max.set("75")
+    desc = dialog.lbl_mode_desc.cget("text")
+    assert "Legacy discovery mode: Find up to 75 total candidates" in desc
+
+    dialog.var_max.set("")
+    desc = dialog.lbl_mode_desc.cget("text")
+    assert "Legacy discovery mode: Find up to [target unset] total candidates" in desc
+
+    # 6. Restoring targeted mode preserves the previous targeted inputs
+    dialog.var_legacy_mode.set(False)
+    dialog._on_legacy_toggled()
+    desc = dialog.lbl_mode_desc.cget("text")
+    assert "10 from Yahoo News and 15 from MSN" in desc
+
+    dialog.destroy()
+    root.destroy()
 
 
 
@@ -1378,3 +1929,22 @@ def test_gui_workspace_centering_and_maximize_restore():
 
 
 
+
+
+
+
+def test_gui_supabase_articles_treeview_column_header():
+    """
+    Verifies that the Supabase articles treeview column header for 'url'
+    is 'Article URL' rather than 'Canonical URL'.
+    """
+    import tkinter as tk
+    from src.gui.app import CollectionApp
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        app = CollectionApp(root)
+        url_heading = app.supabase_articles_tree.heading("url")["text"]
+        assert url_heading == "Article URL"
+    finally:
+        root.destroy()

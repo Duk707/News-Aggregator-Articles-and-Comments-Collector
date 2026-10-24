@@ -54,9 +54,20 @@ class SupabaseMapper:
                   if article.original_publisher and article.original_publisher.strip() 
                   else article.platform)
         
-        url = (article.canonical_url.strip() 
-               if article.canonical_url and article.canonical_url.strip() 
-               else article.requested_url)
+        is_yahoo = (article.platform == "Yahoo News" or article.source_adapter == "YahooAdapter")
+        is_msn = (article.platform == "MSN" or article.source_adapter == "MSNAdapter")
+
+        if is_yahoo or is_msn:
+            # Preserves original requested article URL for Yahoo/MSN
+            # without replacing with external original publisher's canonical URL.
+            url = (article.requested_url.strip() 
+                   if article.requested_url and article.requested_url.strip() 
+                   else "")
+        else:
+            # Preserves existing behavior for unrelated sources
+            url = (article.canonical_url.strip() 
+                   if article.canonical_url and article.canonical_url.strip() 
+                   else (article.requested_url.strip() if article.requested_url else ""))
         
         content_hash = cls.compute_content_hash(article.article_text)
         pub_date = cls.extract_date_str(article.publication_datetime or article.updated_datetime)

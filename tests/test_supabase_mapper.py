@@ -332,3 +332,220 @@ def test_map_comments_relative_and_missing_timestamps():
     errors, warnings = SupabaseValidator.validate_dataset(dataset)
     assert len(errors) == 0
 
+
+
+def test_map_article_preserves_yahoo_requested_url_over_external_canonical():
+    """
+    Verifies that Yahoo articles map public.articles.url to requested_url,
+    ignoring any external original publisher canonical URL while preserving
+    canonical metadata internally on the Article model.
+    """
+    article = Article(
+        platform="Yahoo News",
+        source_adapter="YahooAdapter",
+        requested_url="https://news.yahoo.com/education-ai-test-123.html",
+        canonical_url="https://www.reuters.com/world/education-ai-test.html",
+        original_publisher="Reuters",
+        title="Yahoo Syndicated AI Article",
+        article_text="Article content text here.",
+        retrieved_at="2026-10-20T12:00:00Z"
+    )
+
+    staged = SupabaseMapper.map_article(article, staging_id=-1)
+
+    assert staged.url == "https://news.yahoo.com/education-ai-test-123.html"
+    assert staged.url != article.canonical_url
+    assert article.canonical_url == "https://www.reuters.com/world/education-ai-test.html"
+
+    dataset = SupabaseMapper.build_staging_dataset([article])
+    errors, warnings = SupabaseValidator.validate_dataset(dataset)
+    assert len(errors) == 0
+
+
+def test_map_article_preserves_msn_requested_url_over_external_canonical():
+    """
+    Verifies that MSN articles map public.articles.url to requested_url,
+    ignoring external publisher canonical URLs (e.g. baltimoresun.com, politico.com).
+    """
+    article = Article(
+        platform="MSN",
+        source_adapter="MSNAdapter",
+        requested_url="https://www.msn.com/en-us/news/education/ai-in-schools/ar-BB12345",
+        canonical_url="https://www.baltimoresun.com/education/ai-in-schools.html",
+        original_publisher="The Baltimore Sun",
+        title="MSN Syndicated AI Article",
+        article_text="Article body text about AI in schools.",
+        retrieved_at="2026-10-20T12:00:00Z"
+    )
+
+    staged = SupabaseMapper.map_article(article, staging_id=-1)
+
+    assert staged.url == "https://www.msn.com/en-us/news/education/ai-in-schools/ar-BB12345"
+    assert staged.url != article.canonical_url
+    assert article.canonical_url == "https://www.baltimoresun.com/education/ai-in-schools.html"
+
+    dataset = SupabaseMapper.build_staging_dataset([article])
+    errors, warnings = SupabaseValidator.validate_dataset(dataset)
+    assert len(errors) == 0
+
+
+def test_map_article_matching_requested_and_canonical():
+    """
+    Verifies that articles whose requested_url and canonical_url match remain unaffected.
+    """
+    article = Article(
+        platform="Yahoo News",
+        source_adapter="YahooAdapter",
+        requested_url="https://news.yahoo.com/direct-yahoo-article-999.html",
+        canonical_url="https://news.yahoo.com/direct-yahoo-article-999.html",
+        title="Direct Article",
+        article_text="Direct article text.",
+        retrieved_at="2026-10-20T12:00:00Z"
+    )
+
+    staged = SupabaseMapper.map_article(article, staging_id=-1)
+    assert staged.url == "https://news.yahoo.com/direct-yahoo-article-999.html"
+
+
+def test_map_article_missing_or_empty_requested_url_does_not_fallback():
+    """
+    Verifies that missing/empty requested_url on Yahoo/MSN articles maps to ""
+    and does NOT silently fall back to an external canonical URL, failing validation.
+    """
+    article = Article(
+        platform="MSN",
+        source_adapter="MSNAdapter",
+        requested_url="",
+        canonical_url="https://www.politico.com/news/education-ai.html",
+        title="Missing URL Article",
+        article_text="Content text.",
+        retrieved_at="2026-10-20T12:00:00Z"
+    )
+
+    staged = SupabaseMapper.map_article(article, staging_id=-1)
+    assert staged.url == ""
+
+    dataset = SupabaseMapper.build_staging_dataset([article])
+    errors, warnings = SupabaseValidator.validate_dataset(dataset)
+    assert any("missing a required non-empty URL" in err for err in errors)
+
+
+def test_unrelated_source_preserves_existing_canonical_fallback_behavior():
+    """
+    Verifies that non-Yahoo/MSN platforms preserve existing canonical_url fallback behavior.
+    """
+    article = Article(
+        platform="Granicus Ideas",
+        source_adapter="GranicusIdeasAdapter",
+        requested_url="https://ousd.granicusideas.com/item/redirect",
+        canonical_url="https://ousd.granicusideas.com/item/canonical",
+        title="Granicus Item",
+        article_text="Granicus item body.",
+        retrieved_at="2026-10-20T12:00:00Z"
+    )
+
+    staged = SupabaseMapper.map_article(article, staging_id=-1)
+    # Existing behavior: canonical_url preferred for non-Yahoo/MSN platforms
+    assert staged.url == "https://ousd.granicusideas.com/item/canonical"
+
+
+def test_supabase_validator_rejects_external_or_invalid_url_for_yahoo_msn():
+    """
+    Verifies that SupabaseValidator flags invalid URL syntax or unsupported external
+    domains on Yahoo/MSN articles.
+    """
+    # 1. Invalid syntax
+    art_invalid_syntax = Article(
+        platform="Yahoo News",
+        source_adapter="YahooAdapter",
+        requested_url="not-a-valid-url",
+        title="Invalid Syntax Article",
+        article_text="Article text",
+        retrieved_at="2026-10-20T12:00:00Z"
+    )
+    dataset1 = SupabaseMapper.build_staging_dataset([art_invalid_syntax])
+    errors1, _ = SupabaseValidator.validate_dataset(dataset1)
+    assert any("invalid URL syntax" in err for err in errors1)
+
+    # 2. External domain on Yahoo platform
+    art_external_yahoo = Article(
+        platform="Yahoo News",
+        source_adapter="YahooAdapter",
+        requested_url="https://www.baltimoresun.com/article.html",
+        title="External Domain Article",
+        article_text="Article text",
+        retrieved_at="2026-10-20T12:00:00Z"
+    )
+    dataset2 = SupabaseMapper.build_staging_dataset([art_external_yahoo])
+    errors2, _ = SupabaseValidator.validate_dataset(dataset2)
+    assert any("requires a valid Yahoo News URL supported by YahooAdapter" in err for err in errors2)
+
+    # 3. External domain on MSN platform
+    art_external_msn = Article(
+        platform="MSN",
+        source_adapter="MSNAdapter",
+        requested_url="https://www.politico.com/article.html",
+        title="External MSN Article",
+        article_text="Article text",
+        retrieved_at="2026-10-20T12:00:00Z"
+    )
+    dataset3 = SupabaseMapper.build_staging_dataset([art_external_msn])
+    errors3, _ = SupabaseValidator.validate_dataset(dataset3)
+    assert any("requires a valid MSN URL supported by MSNAdapter" in err for err in errors3)
+
+
+def test_csv_export_preserves_corrected_urls(tmp_path):
+    """
+    Verifies that SupabaseCSVExporter outputs the corrected Yahoo/MSN requested URL
+    into articles_supabase.csv.
+    """
+    from src.integrations.supabase.exporter import SupabaseCSVExporter
+
+    article = Article(
+        platform="MSN",
+        source_adapter="MSNAdapter",
+        requested_url="https://www.msn.com/en-us/news/tech/ai-article/ar-123",
+        canonical_url="https://www.theverge.com/ai-article.html",
+        title="MSN Tech Article",
+        article_text="Tech article content.",
+        retrieved_at="2026-10-20T12:00:00Z"
+    )
+
+    dataset = SupabaseMapper.build_staging_dataset([article])
+    paths = SupabaseCSVExporter.export(dataset, output_dir=str(tmp_path))
+
+    with open(paths["articles_csv"], "r", encoding="utf-8") as f:
+        content = f.read()
+
+    assert "https://www.msn.com/en-us/news/tech/ai-article/ar-123" in content
+    assert "https://www.theverge.com/ai-article.html" not in content
+
+
+def test_article_comment_relationships_unaffected():
+    """
+    Verifies that comment mapping, temporary ID linking, and parent comment IDs
+    remain completely intact when Yahoo/MSN requested URLs are mapped.
+    """
+    comm = Comment(
+        comment_id="c_msn_1",
+        article_url="https://www.msn.com/en-us/news/tech/ai-article/ar-123",
+        comment_text="Great insight on AI in education.",
+        retrieved_at="2026-10-20T12:00:00Z"
+    )
+    article = Article(
+        platform="MSN",
+        source_adapter="MSNAdapter",
+        requested_url="https://www.msn.com/en-us/news/tech/ai-article/ar-123",
+        canonical_url="https://www.external.com/ai-article.html",
+        title="MSN Tech Article",
+        article_text="Tech article content.",
+        retrieved_at="2026-10-20T12:00:00Z",
+        comments=[comm]
+    )
+
+    dataset = SupabaseMapper.build_staging_dataset([article])
+    assert len(dataset.articles) == 1
+    assert len(dataset.comments) == 1
+    assert dataset.articles[0].url == "https://www.msn.com/en-us/news/tech/ai-article/ar-123"
+    assert dataset.comments[0].article_id == dataset.articles[0].id
+    assert dataset.comments[0].text == "Great insight on AI in education."

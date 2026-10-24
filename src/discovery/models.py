@@ -1,4 +1,4 @@
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from pydantic import BaseModel, Field
 
 
@@ -17,6 +17,7 @@ class CandidateArticle(BaseModel):
     discovery_provider: str = Field(default="Bing News RSS", description="Name of public discovery provider")
     discovery_method: str = Field(default="public_rss_feed", description="Mechanism used to locate candidate")
     discovered_at: str = Field(description="ISO timestamp when candidate was discovered")
+    db_status: str = Field(default="unverified", description="Database verification status: 'db_verified_new', 'db_duplicate', or 'unverified'")
 
 
 class SourceDiscoveryDiagnostics(BaseModel):
@@ -34,6 +35,14 @@ class SourceDiscoveryDiagnostics(BaseModel):
     rejected_unsupported_urls: int = Field(default=0, description="Items rejected because URL is invalid syntax or not supported by router")
     rejected_keywords: int = Field(default=0, description="Items rejected due to include/exclude keyword mismatch")
     rejected_dates: int = Field(default=0, description="Items rejected due to date filter mismatch or missing date")
+    target_confirmed_new: Optional[int] = Field(default=None, description="Requested target for confirmed new URLs")
+    confirmed_new_candidates: int = Field(default=0, description="Confirmed new candidates accepted into pool (snapshot verified)")
+    unverified_candidates: int = Field(default=0, description="Eligible candidates accepted without database verification")
+    shortfall: int = Field(default=0, description="Shortfall from target (target - confirmed_new) if target specified")
+    db_duplicates_excluded: int = Field(default=0, description="Candidates rejected because they already exist in Supabase snapshot")
+    db_excluded_urls: List[Dict[str, Optional[str]]] = Field(default_factory=list, description="List of candidate URLs excluded because they matched accessible Supabase records, along with their matching stored URL if available")
+    db_verification_status: str = Field(default="disabled", description="Supabase verification state: 'complete', 'empty', 'failed', 'incomplete', 'disabled'")
+    consecutive_zero_yield_pages: int = Field(default=0, description="Consecutive pages that yielded zero new candidates")
     platform_breakdown: Dict[str, int] = Field(default_factory=dict, description="Counts of pooled candidates by actual adapter platform")
     returned_platform_breakdown: Dict[str, int] = Field(default_factory=dict, description="Counts of returned candidates by actual adapter platform")
     network_errors: int = Field(default=0, description="Number of HTTP/network request errors or timeouts")
@@ -59,6 +68,7 @@ class DiscoveryRunDiagnostics(BaseModel):
     msn: SourceDiscoveryDiagnostics = Field(default_factory=lambda: SourceDiscoveryDiagnostics(source_name="MSN"))
     total_candidates_returned: int = Field(default=0, description="Total candidates returned after merging")
     overall_termination: str = Field(default="completed", description="Overall summary termination status")
+    db_verification_status: str = Field(default="disabled", description="Overall Supabase verification state")
 
     def format_summary_line(self) -> str:
         """Returns a concise single-line summary of per-source diagnostics."""
@@ -78,10 +88,40 @@ class DiscoveryRunDiagnostics(BaseModel):
         lines = [
             f"Discovery Run Summary (Total Returned to GUI: {self.total_candidates_returned}, Status: {self.overall_termination})"
         ]
+        if self.db_verification_status != "disabled":
+            lines.append(f"• Database Verification: Status [{self.db_verification_status}]")
+        else:
+            lines.append("• Database Verification: Disabled (No database snapshot provided; candidates are unverified)")
         for src in (self.yahoo, self.msn):
             if src.pages_attempted == 0 and src.requests_made == 0:
                 continue
             lines.append(f"• {src.source_name} Query (Terminated: {src.termination_reason}):")
+            if src.target_confirmed_new is not None:
+                if self.db_verification_status != "disabled":
+                    lines.append(
+                        f"    - Target & Yield: Target {src.target_confirmed_new} -> {src.confirmed_new_candidates} confirmed new "
+                        f"(Shortfall: {src.shortfall}, DB Dups Excluded: {src.db_duplicates_excluded})"
+                    )
+
+                else:
+                    lines.append(
+                        f"    - Target & Yield: Target {src.target_confirmed_new} -> {src.unverified_candidates} eligible/unverified "
+                        f"(DB Verification: Disabled, 0 confirmed new)"
+                    )
+
+            if src.db_excluded_urls:
+                lines.append(
+                    f"    - Excluded Supabase Duplicates ({len(src.db_excluded_urls)} item(s) matched accessible database records):"
+                )
+                for item in src.db_excluded_urls:
+                    cand_u = item.get("candidate_url", "")
+                    stored_u = item.get("stored_url")
+                    lines.append(f"        * Candidate URL: {cand_u}")
+                    if stored_u:
+                        lines.append(f"          Stored URL:    {stored_u}")
+                    else:
+                        lines.append(f"          Stored URL:    [Could not retrieve matching stored record]")
+
             lines.append(
                 f"    - Network: {src.requests_made} requests across {src.pages_attempted} page(s) "
                 f"({src.network_errors} net errs, {src.xml_parse_errors} xml errs)"
