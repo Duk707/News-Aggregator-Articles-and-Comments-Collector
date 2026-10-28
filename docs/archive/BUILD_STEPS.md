@@ -1,3 +1,17 @@
+# ARCHIVED DOCUMENT — Historical Implementation Log (Steps 1–31)
+
+> [!NOTE]
+> This document is an archived historical engineering log recording the sequential implementation steps of the prototype (Steps 1–26) and post-prototype extensions (Steps 27–31). It is preserved for traceability, provenance, and design rationale.
+>
+> For active, up-to-date documentation, refer to:
+>
+> - [README.md](../../README.md) — Project overview, source scope, and quick start.
+> - [USER_GUIDE.md](../../USER_GUIDE.md) — End-user desktop manual and operational workflows.
+> - [DEVELOPER.md](../../DEVELOPER.md) — Technical architecture, adapter isolation, discovery engine, and PyInstaller build guide.
+> - [AGENTS.md](../../AGENTS.md) — Project governance, modular collection rules, and two-gate approval workflows.
+
+---
+
 # BUILD_STEPS.md
 
 ## Adaptive News Article and Comment Collector
@@ -10,7 +24,7 @@ and wait for approval before continuing unless explicitly instructed otherwise.
 
 Steps 1–26 are completed. For Step 27 and all subsequent new build steps, a mandatory two-gate pre-implementation approval workflow applies (see the Workflow section before Step 27).
 
-------------------------------------------------------------------------
+---
 
 ## Phase 0 - Project Initialization
 
@@ -25,7 +39,7 @@ Acceptance: - project opens normally in Antigravity; - Python
 environment is identified; - generated data and secrets are ignored by
 Git.
 
-------------------------------------------------------------------------
+---
 
 ### Step 2 - Create and Verify Python Environment
 
@@ -49,7 +63,7 @@ Then install Playwright Chromium:
 Acceptance: - Python runs from `.venv`; - Playwright can launch
 Chromium; - pytest executes.
 
-------------------------------------------------------------------------
+---
 
 ## Phase 1 - Core Data Model
 
@@ -66,7 +80,7 @@ EXTRACTION_ERROR
 Acceptance: - models instantiate correctly; - JSON serialization
 works; - model tests pass.
 
-------------------------------------------------------------------------
+---
 
 ### Step 4 - Implement URL Validation and Source Router
 
@@ -81,7 +95,7 @@ validation error - unsupported website -\> UNSUPPORTED
 
 Add unit tests.
 
-------------------------------------------------------------------------
+---
 
 ## Phase 2 - Browser Layer
 
@@ -100,7 +114,7 @@ denial when identifiable.
 Acceptance: - opens a public test page; - returns rendered HTML; -
 closes browser cleanly.
 
-------------------------------------------------------------------------
+---
 
 ## Phase 3 - Yahoo Article Prototype
 
@@ -116,16 +130,16 @@ HTTP/navigation outcome; - retrieval timestamp.
 Acceptance: - a live Yahoo article can be loaded; - failures produce
 useful diagnostics.
 
-------------------------------------------------------------------------
+---
 
 ### Step 7 - Extract Yahoo Article Metadata
 
 Implement fallback extraction:
 
-1.  JSON-LD
-2.  OpenGraph/meta tags
-3.  semantic HTML
-4.  Yahoo-specific selectors if necessary
+1. JSON-LD
+2. OpenGraph/meta tags
+3. semantic HTML
+4. Yahoo-specific selectors if necessary
 
 Extract when available: - title - author - publication date - updated
 date - original publisher - canonical URL - language
@@ -135,7 +149,7 @@ Record which method supplied each important field when practical.
 Acceptance: - test several Yahoo articles; - missing fields do not crash
 the run; - no fabricated values.
 
-------------------------------------------------------------------------
+---
 
 ### Step 8 - Extract Yahoo Article Body
 
@@ -148,7 +162,7 @@ Normalize whitespace but preserve paragraph order.
 Acceptance: - body contains the actual article; - obvious unrelated page
 text is excluded; - empty extraction is reported as a failure/warning.
 
-------------------------------------------------------------------------
+---
 
 ## Phase 4 - Yahoo Comment Investigation
 
@@ -173,7 +187,7 @@ each article receives a meaningful preliminary comment status.
 STOP HERE and review the findings before implementing Yahoo comment
 extraction.
 
-------------------------------------------------------------------------
+---
 
 ### Step 10 - Determine Yahoo's Current Comment Delivery Method
 
@@ -190,7 +204,7 @@ Acceptance: - `README.md` or diagnostics contain the observed Yahoo
 comment mechanism; - extraction strategy is based on current evidence,
 not guessed selectors.
 
-------------------------------------------------------------------------
+---
 
 ### Step 11 - Implement Yahoo Public Comment Extraction
 
@@ -210,7 +224,7 @@ NONE_PRESENT; - results are normalized.
 If Yahoo comments cannot currently be collected, document that
 limitation and continue the project without fabricating a solution.
 
-------------------------------------------------------------------------
+---
 
 ## Phase 5 - Output
 
@@ -224,7 +238,7 @@ Use UTF-8.
 Acceptance: - exported JSON opens correctly; - Unicode text is
 preserved; - comments remain associated with the article.
 
-------------------------------------------------------------------------
+---
 
 ### Step 13 - CSV Export
 
@@ -236,7 +250,7 @@ Acceptance: - CSV files open correctly in Excel/Google Sheets; -
 multiple comments map to the correct article; - commas/quotes/newlines
 are escaped correctly.
 
-------------------------------------------------------------------------
+---
 
 ## Phase 6 - Batch Collection
 
@@ -250,7 +264,7 @@ individual failures.
 Acceptance: - one failed URL does not terminate the batch; - final
 summary shows successes/failures.
 
-------------------------------------------------------------------------
+---
 
 ### Step 15 - Add Rate Limiting and Run Limits
 
@@ -262,7 +276,7 @@ Defaults should be conservative.
 Acceptance: - batch collection cannot accidentally run without
 reasonable limits; - configuration is documented.
 
-------------------------------------------------------------------------
+---
 
 ### Step 16 - Create Collection Summary
 
@@ -279,7 +293,7 @@ After a run, display:
 
 Acceptance: - summary matches exported data.
 
-------------------------------------------------------------------------
+---
 
 ## Phase 7 - MSN Adapter
 
@@ -293,7 +307,7 @@ comment availability/mechanism.
 
 Do not assume MSN behaves like Yahoo.
 
-------------------------------------------------------------------------
+---
 
 ### Step 18 - Implement MSN Article Extraction
 
@@ -302,7 +316,7 @@ Implement MSN adapter using the same normalized Article model.
 Acceptance: - router automatically selects MSN; - article output has the
 same schema as Yahoo; - source-specific code remains inside MSN adapter.
 
-------------------------------------------------------------------------
+---
 
 ### Step 19 - Implement MSN Comment Handling
 
@@ -311,7 +325,7 @@ public comments if supported; - otherwise return an accurate status.
 
 Acceptance: - same Comment model/status system works for Yahoo and MSN.
 
-------------------------------------------------------------------------
+---
 
 ## Phase 8 - Desktop Application
 
@@ -329,7 +343,7 @@ Acceptance: - GUI can invoke the existing collection engine; - closing
 GUI shuts down browser cleanly; - UI remains responsive during
 collection.
 
-------------------------------------------------------------------------
+---
 
 ## Mandatory Pre-Implementation Approval Workflow (Step 27 and Subsequent Steps)
 
@@ -349,7 +363,7 @@ Steps 1–26 are completed historical implementation milestones. For Step 27 and
 6. **Walkthrough**: Provide the comprehensive end-of-step walkthrough (per `AGENTS.md` Rule 2a).
 7. **Gate 2 Approval**: **STOP** and wait for explicit user approval before proceeding to the next build step.
 
-------------------------------------------------------------------------
+---
 
 ### Step 21 - Add Research-Friendly Result View
 
@@ -359,7 +373,7 @@ count; - collected count; - diagnostic note.
 
 Acceptance: - user can quickly identify useful sponsor samples.
 
-------------------------------------------------------------------------
+---
 
 ## Phase 9 - Topic-Assisted Workflow
 
@@ -374,7 +388,7 @@ filter/label.
 
 Do not mix search/discovery logic into source adapters.
 
-------------------------------------------------------------------------
+---
 
 ### Step 23 - Add Candidate Article Discovery
 
@@ -387,7 +401,7 @@ them.
 Acceptance: - discovery and extraction are separate modules; - URLs
 retain discovery/source provenance.
 
-------------------------------------------------------------------------
+---
 
 ## Phase 10 - Testing and Documentation
 
@@ -401,7 +415,7 @@ selector; - duplicate comment.
 
 Do not rely entirely on live websites.
 
-------------------------------------------------------------------------
+---
 
 ### Step 25 - Create Sponsor Sample
 
@@ -416,7 +430,7 @@ collected; - limitations.
 
 This is a research sample, not a large crawl.
 
-------------------------------------------------------------------------
+---
 
 ### Step 26 - Final Documentation
 
@@ -425,13 +439,14 @@ setup; - usage; - supported sites; - output schema; - screenshots if
 useful; - known limitations; - ethical/operational constraints; - Yahoo
 findings; - MSN findings.
 
-------------------------------------------------------------------------
+---
 
 ## Phase 11 - Supabase Database Integration & Staging
 
 ### Step 27 - Supabase Compatibility & Staging Layer
 
 Implement `src/integrations/supabase/` compatibility and staging layer:
+
 - `SupabaseArticleRow` and `SupabaseCommentRow` row models matching Supabase table schemas.
 - `SupabaseMapper` converting collector Article/Comment objects into Supabase rows.
 - Two-pass comment mapping with article-local parent resolution and structural parent fallback.
@@ -443,14 +458,16 @@ Implement `src/integrations/supabase/` compatibility and staging layer:
 - `SupabaseCSVExporter` writing `articles_supabase.csv` and `comments_supabase.csv`.
 
 Acceptance:
+
 - Unit tests pass with zero network calls or live database access.
 - Local mapping preserves rich collector objects while creating Supabase-compatible staging rows.
 
-------------------------------------------------------------------------
+---
 
 ### Step 28 - Supabase Preview & Export UI
 
 Integrated the Supabase staging layer into the desktop application GUI (`src/gui/app.py` & `src/gui/supabase_preview.py`):
+
 - Tab 4: "Supabase Articles Staging" Treeview table showing all 14 schema columns (`id`, `title`, `content`, `source`, `created_at`, `url`, `author`, `published_date`, `content_hash`, `clean_content`, `processing_status`, `processing_note`, `processed_at`, `is_relevant`) with vertical/horizontal scrolling and full un-truncated text detail panel.
 - Tab 5: "Supabase Comments Staging" Treeview table showing all 5 schema columns (`id`, `article_id`, `text`, `created_at`, `parent_comment_id`) with vertical/horizontal scrolling and full un-truncated text detail panel.
 - Validation Summary Panel and "Export Supabase CSVs..." button gated by staging validation status (disabled on errors/empty, enabled on valid/warnings).
@@ -460,13 +477,15 @@ Integrated the Supabase staging layer into the desktop application GUI (`src/gui
 - Automatic state reset on new collection run.
 
 Acceptance:
+
 - Unit and integration tests pass with zero live database or network calls (`tests/test_gui_supabase_preview.py`).
 
-------------------------------------------------------------------------
+---
 
 ### Step 29 - Direct Supabase Upload
 
 Implemented secure, optional dataset upload from previewed `SupabaseStagingDataset` into Supabase `public.articles` and `public.comments` tables:
+
 - **Implementation Status**: **COMPLETE and MOCK-VERIFIED**.
 - **Live Supabase Integration Verification**: **DEFERRED — awaiting Supabase project connection information and verification of applicable RLS behavior.** (This is an unavailable external prerequisite, not a Step 29 implementation failure).
 - Connection & credential management model (`SupabaseClientConfig`, `load_supabase_config`, `save_supabase_client_config`) storing only public URL and Publishable/Anon Key in `data/config/supabase_client_config.json` (git-ignored).
@@ -483,14 +502,16 @@ Implemented secure, optional dataset upload from previewed `SupabaseStagingDatas
 - Antigravity performs zero live Supabase reads or writes. The user personally performs the first real Supabase dry run/authentication test and all first real database writes.
 
 Acceptance & Verification:
+
 - 100% of unit tests pass with zero live network requests or database access (`tests/test_supabase_uploader.py`).
 - Complete project test suite passes cleanly (**159 passed** across all 26 test modules).
 
-------------------------------------------------------------------------
+---
 
 ### Step 30 — Additional Public Article & Comment Source Support
 
 Expanded collection capabilities beyond Yahoo and MSN using additional publicly accessible sources providing reader comments, discussions, ideas, and civic responses:
+
 - **Implementation Status**: **Step 30A COMPLETE and MOCK-VERIFIED**.
 - **Yahoo and MSN Frozen**: Yahoo and MSN source adapters (`src/collectors/yahoo.py`, `src/collectors/msn.py`), extraction routines, and regression test suites (`test_yahoo_loader.py`, `test_msn_article_extraction.py`, `test_msn_comment_handling.py`, `test_msn_investigation.py`, `test_router.py`) remain 100% frozen and unmodified.
 - **Shared WordPress Comment Extraction Helper (`src/extraction/wordpress.py`)**:
@@ -500,7 +521,7 @@ Expanded collection capabilities beyond Yahoo and MSN using additional publicly 
   - Safely handles missing comment dates (common in HEPI legacy posts) by setting `published_datetime = None`.
 - **TESL Ontario Blog Source Adapter (`src/collectors/tesl_ontario.py` / `TESLOntarioAdapter`)**:
   - Extracts article metadata, title, author, published datetime, entry content text, and nested public reader comments from `blog.teslontario.org`.
-  - Validated against ground-truth baseline data in `ChristopherMcQueenBlogGovernmentData092626.xlsx`.
+  - Validated against ground-truth baseline data in project baseline ground-truth reference data (blog/civic data workbook).
 - **Higher Education Policy Institute Adapter (`src/collectors/hepi.py` / `HEPIAdapter`)**:
   - Extracts policy reports, guest author bylines, publication date, main text, and public comments from `hepi.ac.uk`.
   - Preserves `published_datetime = None` for comments lacking HTML timestamps per workbook ground truth.
@@ -522,23 +543,25 @@ Expanded collection capabilities beyond Yahoo and MSN using additional publicly 
   - Newly collected `Article` and `Comment` objects flow seamlessly through `SupabaseMapper` (Step 27), `SupabaseStagingDataset`, Step 28 preview, and `SupabaseUploader` (Step 29).
 
 Acceptance & Verification:
+
 - 100% of unit tests pass with zero live network requests (`tests/test_wordpress_extraction.py`, `tests/test_tesl_ontario.py`, `tests/test_hepi.py`, `tests/test_engagement_hq.py`, `tests/test_cult_of_pedagogy.py`, `tests/test_spencer_education.py`, `tests/test_wonkhe.py`, `tests/test_granicus_ideas.py`, `tests/test_legistar.py`, `tests/test_step30c_router.py`).
 - 30 Yahoo and MSN regression tests pass unmodified.
 - Complete project test suite passes cleanly.
 
-------------------------------------------------------------------------
+---
 
 ### Step 31 — Supabase Integration Verification
 
 Verify Step 29 only after the required Supabase project configuration and RLS information become available:
+
 - All live Supabase interactions are performed manually by the user.
 - Antigravity may analyze observed results, correct implementation defects, and run mock-only regression tests, but must not independently execute live Supabase reads or writes.
 
-------------------------------------------------------------------------
+---
 
 ## Future Backlog - Do Not Build Yet
 
-Potential later work: - additional news-site adapters; - scheduler; - API/service layer; - NLP/sentiment analysis; - source health monitoring; - plugin-based adapter registration; - integration with the larger multi-agent AI-in-Education system (Note: Supabase database staging and upload is active in Phase 11 / Steps 27–30).
+Potential later work: - additional news-site adapters; - scheduler; - API/service layer; - NLP/sentiment analysis; - source health monitoring; - plugin-based adapter registration (Note: Supabase database staging and upload is active in Phase 11 / Steps 27–30).
 
 Do not add these until the Yahoo/MSN prototype is validated.
 
@@ -547,14 +570,12 @@ Do not add these until the Yahoo/MSN prototype is validated.
 After placing `AGENTS.md`, `PLAN.md`, and `BUILD_STEPS.md` in the
 project root:
 
-1.  Open the folder in Antigravity.
+1. Open the folder in Antigravity.
+2. Ask the coding agent to read all three files.
+3. Tell it:
 
-2.  Ask the coding agent to read all three files.
-
-3.  Tell it:
-
-    Read AGENTS.md, PLAN.md, and BUILD_STEPS.md. Follow their
-    requirements. Begin with Step 1 only. Do not proceed to Step 2 until
-    Step 1 has been completed and verified.
+   Read AGENTS.md, PLAN.md, and BUILD_STEPS.md. Follow their
+   requirements. Begin with Step 1 only. Do not proceed to Step 2 until
+   Step 1 has been completed and verified.
 
 This keeps implementation controlled and makes debugging easier.
