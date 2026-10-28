@@ -1,3 +1,17 @@
+# ARCHIVED DOCUMENT — Prototype Architecture & Development Plan
+
+> [!NOTE]
+> This document is the original architectural specification and implementation plan for the initial prototype of the Adaptive News Article and Comment Collector. It has been archived following the successful completion and verification of the prototype (Steps 1–26) and post-prototype database integration milestones (Steps 27–31).
+>
+> For active, up-to-date documentation, refer to:
+>
+> - [README.md](../../README.md) — Project overview, source scope, and quick start.
+> - [USER_GUIDE.md](../../USER_GUIDE.md) — End-user desktop manual and operational workflows.
+> - [DEVELOPER.md](../../DEVELOPER.md) — Technical architecture, adapter isolation, discovery engine, and PyInstaller build guide.
+> - [AGENTS.md](../../AGENTS.md) — Project governance, modular collection rules, and two-gate approval workflows.
+
+---
+
 # PLAN.md
 
 ## Adaptive News Article and Comment Collector
@@ -117,44 +131,24 @@ These were Non-Goals for the initial prototype (Steps 1–26). Following prototy
     |   |
     |   |-- models/
     |   |   |-- article.py
-    |   |   `-- comment.py
-    |   |
-    |   |-- collectors/
-    |   |   |-- base.py
-    |   |   |-- router.py
-    |   |   |-- yahoo.py
-    |   |   `-- msn.py
+    |   |   `-- comment.py     |   |     |   |-- collectors/     |   |   |-- base.py     |   |   |-- router.py     |   |   |-- yahoo.py     |   |   `-- msn.py
     |   |
     |   |-- extraction/
     |   |   |-- metadata.py
     |   |   |-- article_text.py
-    |   |   `-- comments.py
-    |   |
-    |   |-- browser/
-    |   |   `-- manager.py
+    |   |   `-- comments.py     |   |     |   |-- browser/     |   |   `-- manager.py
     |   |
     |   |-- export/
     |   |   |-- json_exporter.py
-    |   |   `-- csv_exporter.py
-    |   |
-    |   |-- integrations/
-    |   |   `-- supabase/
+    |   |   `-- csv_exporter.py     |   |     |   |-- integrations/     |   |   `-- supabase/
     |   |       |-- models.py
     |   |       |-- mapper.py
     |   |       |-- validation.py
-    |   |       `-- exporter.py
-    |   |
-    |   `-- utils/
+    |   |       `-- exporter.py     |   |     |   `-- utils/
     |       |-- logging.py
-    |       `-- urls.py
-    |
-    |-- data/
-    |   |-- input/
-    |   |   `-- urls.txt
+    |       `-- urls.py     |     |-- data/     |   |-- input/     |   |   `-- urls.txt
     |   |-- output/
-    |   `-- diagnostics/
-    |
-    `-- tests/
+    |   `-- diagnostics/     |     `-- tests/
         |-- fixtures/
         |-- test_router.py
         |-- test_models.py
@@ -358,19 +352,19 @@ This turns failed collection attempts into useful engineering evidence.
 
 ## 15. Ethical / Operational Constraints
 
--   Use public pages.
--   Use conservative collection rates.
--   Do not defeat access controls.
--   Do not bypass subscriptions.
--   Do not automate personal accounts.
--   Do not collect unnecessary personal information.
--   Store only data necessary for the research objective.
--   Preserve URLs/timestamps for traceability.
--   Review site terms and institutional requirements before scaling
-    collection.
+- Use public pages.
+- Use conservative collection rates.
+- Do not defeat access controls.
+- Do not bypass subscriptions.
+- Do not automate personal accounts.
+- Do not collect unnecessary personal information.
+- Store only data necessary for the research objective.
+- Preserve URLs/timestamps for traceability.
+- Review site terms and institutional requirements before scaling
+  collection.
 
 ## 16. Future Extensions
 
-After Yahoo and MSN: - additional adapters; - scheduler; - article discovery APIs; - source health checks; - configurable collection policies; - NLP/sentiment/topic analysis; - integration into the larger AI-in-Education multi-agent system.
+After Yahoo and MSN: - additional adapters; - scheduler; - article discovery APIs; - source health checks; - configurable collection policies; - NLP/sentiment/topic analysis
 
 *(Note: Supabase database staging and upload implementation is COMPLETE and MOCK-VERIFIED under Phase 11 / Steps 27–29, with live verification DEFERRED to Step 31. Step 30A Additional Public Article & Comment Source Support is COMPLETE and MOCK-VERIFIED).*

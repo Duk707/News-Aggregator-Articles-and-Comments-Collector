@@ -57,3 +57,9 @@ secrets.json
 # Research & diagnostic scripts
 scratch/
 
+# PyInstaller build outputs
+/build-new/
+/dist-new/
+
+# Local application configuration
+/data/config/

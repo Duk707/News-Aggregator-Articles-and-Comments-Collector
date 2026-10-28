@@ -18,46 +18,46 @@ important than maximizing the number of collected records.
 
 ## Core Agent Rules
 
-1.  Work incrementally. Follow `PLAN.md` and `BUILD_STEPS.md`.
-2.  Complete and test one build step before starting the next.
-2a. After completing and testing each build step, provide a comprehensive end-of-step walkthrough explaining:
-    - Files created or modified
-    - Purpose of each file
-    - How the functionality works
-    - Important code, functions, and classes
-    - How the step connects to the overall program
-    - Tests executed and verification results
-    - Any limitations, edge cases, or issues
-    - What the next step will add
-2b. Mandatory Pre-Implementation Approval Gate for Remaining and Subsequent Steps (Step 27 and all subsequent new build steps):
-    Steps 1–26 are completed. For Step 27 and all subsequent new build steps, follow a strict two-gate approval workflow:
-    - **Gate 1 (Pre-Implementation Plan & Approval)**:
-      1. Review `AGENTS.md`, `PLAN.md`, `BUILD_STEPS.md`, and the relevant existing implementation.
-      2. Produce a concise implementation plan before making any implementation changes. The plan must identify:
-         - files expected to be created or modified;
-         - classes/functions/components expected to be added or changed;
-         - how the work integrates with the existing architecture;
-         - testing and verification strategy;
-         - important design decisions, assumptions, and risks;
-         - anything explicitly out of scope for that step.
-      3. **STOP** and wait for explicit user approval of the implementation plan before making any code or configuration edits.
-    - **Implementation & Testing**:
-      4. Only after plan approval, implement that step.
-      5. Run the appropriate tests and verification.
-    - **Gate 2 (Post-Implementation Walkthrough & Approval)**:
-      6. Provide the required end-of-step walkthrough (per Rule 2a).
-      7. **STOP** and wait for explicit user approval before proceeding to the next build step.
-3.  Do not invent selectors, endpoints, comments, metadata, or
-    successful extraction results.
-4.  Do not silently treat extraction failure as "no comments."
-5.  Keep source-specific logic isolated from the shared collection
-    pipeline.
-6.  Prefer maintainable extraction strategies over brittle hard-coded
-    selectors.
-7.  Record why extraction failed when content cannot be collected.
-8.  Preserve provenance for every collected article and comment.
-9.  Do not bypass paywalls, authentication controls, CAPTCHAs, access
-    controls, or anti-bot protections.
+1. Work incrementally. Follow the active operational guides (`README.md`, `USER_GUIDE.md`, `DEVELOPER.md`) and project architecture. Treat archived specifications (`docs/archive/PLAN.md` and `docs/archive/BUILD_STEPS.md`) as historical references rather than active build instructions.
+2. Complete and test one build step before starting the next.
+   2a. After completing and testing each build step, provide a comprehensive end-of-step walkthrough explaining:
+   - Files created or modified
+   - Purpose of each file
+   - How the functionality works
+   - Important code, functions, and classes
+   - How the step connects to the overall program
+   - Tests executed and verification results
+   - Any limitations, edge cases, or issues
+   - What the next step will add
+     2b. Mandatory Pre-Implementation Approval Gate for Remaining and Subsequent Steps (Step 27 and all subsequent new build steps):
+     Steps 1–26 are completed. For Step 27 and all subsequent new build steps, follow a strict two-gate approval workflow:
+   - **Gate 1 (Pre-Implementation Plan & Approval)**:
+     1. Review `AGENTS.md`, active documentation, relevant historical records in `docs/archive/`, and the existing codebase implementation.
+     2. Produce a concise implementation plan before making any implementation changes. The plan must identify:
+        - files expected to be created or modified;
+        - classes/functions/components expected to be added or changed;
+        - how the work integrates with the existing architecture;
+        - testing and verification strategy;
+        - important design decisions, assumptions, and risks;
+        - anything explicitly out of scope for that step.
+     3. **STOP** and wait for explicit user approval of the implementation plan before making any code or configuration edits.
+   - **Implementation & Testing**:
+     4. Only after plan approval, implement that step.
+     5. Run the appropriate tests and verification.
+   - **Gate 2 (Post-Implementation Walkthrough & Approval)**:
+     6. Provide the required end-of-step walkthrough (per Rule 2a).
+     7. **STOP** and wait for explicit user approval before proceeding to the next build step.
+3. Do not invent selectors, endpoints, comments, metadata, or
+   successful extraction results.
+4. Do not silently treat extraction failure as "no comments."
+5. Keep source-specific logic isolated from the shared collection
+   pipeline.
+6. Prefer maintainable extraction strategies over brittle hard-coded
+   selectors.
+7. Record why extraction failed when content cannot be collected.
+8. Preserve provenance for every collected article and comment.
+9. Do not bypass paywalls, authentication controls, CAPTCHAs, access
+   controls, or anti-bot protections.
 10. Collect only content that is publicly accessible through normal site
     access.
 11. Respect applicable site terms, robots policies where relevant, rate
@@ -69,16 +69,20 @@ important than maximizing the number of collected records.
 14. Keep diagnostic artifacts separate from final datasets.
 15. Before adding a dependency, explain why it is needed and update
     `requirements.txt`.
+16. **Source Scope Boundary**: Yahoo News and MSN are the two primary, actively used, and user-facing sources in the application. The eight additional blog and government adapters (`TESLOntarioAdapter`, `HEPIAdapter`, `EngagementHQAdapter`, `CultOfPedagogyAdapter`, `SpencerEducationAdapter`, `WonkheAdapter`, `GranicusIdeasAdapter`, `LegistarAdapter`) are strictly internal backend implementations, are not exposed in the GUI or automated Candidate Discovery, and must not be activated, exposed in user interfaces, or modified without explicit user approval.
 
-## Intended User Workflow
+## Implemented User Workflow
 
-The application should eventually support: - Entering one or more
-article URLs. - Entering a topic/search phrase such as
-`AI in Education`. - Selecting one or more supported sources. -
-Collecting article metadata and article text. - Detecting whether
-comments are currently accessible. - Collecting public comments and
-replies when supported. - Previewing results. - Exporting results to
-JSON and CSV. - Viewing failures and extraction diagnostics.
+The desktop application provides an operational workflow for:
+- Entering one or more article URLs directly or loading from a file.
+- Entering a topic/search phrase such as `AI in Education`.
+- Automated candidate article discovery with independent quotas for Yahoo News and MSN.
+- Collecting article metadata and cleaned body text without site boilerplate.
+- Detecting public comment availability and extracting comments and reply hierarchies.
+- Previewing results in interactive research inspection and Supabase staging tabs.
+- Exporting collected datasets to JSON, standard CSV, and Supabase-formatted CSV.
+- Optional pre-upload dry run checks and direct authenticated upload to Supabase.
+- Viewing live progress logs, summary metrics, and extraction diagnostics.
 
 ## Architecture Principle: Adapter-Based Collection
 
@@ -90,9 +94,9 @@ Use a shared interface with source adapters, for example:
     Collector Application
             |
        Source Router
-       /          \
+       /                    \
     YahooAdapter  MSNAdapter
-       \          /
+       \                      /
        Normalized Data
             |
        JSON / CSV
@@ -162,26 +166,27 @@ Do not collect unnecessary personal information.
 
 ## Technical Direction
 
-Preferred initial stack: - Python 3.11+ - Playwright for
-JavaScript-rendered pages - BeautifulSoup4 for HTML parsing - `requests`
-only where ordinary HTTP retrieval is sufficient - Python dataclasses or
-Pydantic for normalized models - standard `logging` - JSON and CSV
-exports - pytest for tests
-
-For the eventual desktop UI, prefer a simple Python UI such as
-CustomTkinter/Tkinter unless the build reveals a better justified
-option. Do not build the GUI before the collection engine works.
+Core stack:
+- Python 3.11+
+- Playwright for JavaScript-rendered pages
+- BeautifulSoup4 for HTML parsing
+- `requests` for HTTP and API endpoints
+- Python dataclasses and Pydantic for normalized models
+- Standard `logging`
+- JSON and CSV exports
+- `pytest` for automated test suites
+- Desktop GUI implemented in Python standard `tkinter` / `ttk` (`src/gui/`), keeping extraction logic strictly decoupled from presentation.
 
 ## Browser Automation Rules
 
--   Use a fresh, project-controlled browser context.
--   Do not import the user's normal browser cookies.
--   Use visible/headed browser mode during diagnostics when helpful.
--   Use explicit waits rather than arbitrary long sleeps where possible.
--   Apply conservative delays between article requests.
--   Stop or report clearly when the site presents CAPTCHA/access denial.
--   Save diagnostics only when useful and avoid retaining unnecessary
-    user/session data.
+- Use a fresh, project-controlled browser context.
+- Do not import the user's normal browser cookies.
+- Use visible/headed browser mode during diagnostics when helpful.
+- Use explicit waits rather than arbitrary long sleeps where possible.
+- Apply conservative delays between article requests.
+- Stop or report clearly when the site presents CAPTCHA/access denial.
+- Save diagnostics only when useful and avoid retaining unnecessary
+  user/session data.
 
 ## Output Requirements
 
@@ -214,17 +219,14 @@ deterministically.
 
 ## Scope Control
 
-The initial milestone is NOT a universal news scraper.
+The initial prototype milestones and database integrations are completed:
+- Milestone 1: Yahoo News adapter, single URL, article extraction, comment detection diagnostics, JSON output (Completed).
+- Milestone 2: Yahoo public comment extraction, multiple URLs, CSV export (Completed).
+- Milestone 3: MSN adapter, shared source router (Completed).
+- Milestone 4: Desktop application, topic/search-assisted discovery workflow, batch collection (Completed).
+- Phase 11: Supabase database staging, preview, and upload architecture (Completed and mock-verified).
 
-Milestone 1: - Yahoo News adapter - single URL - article extraction -
-comment detection diagnostics - JSON output
-
-Milestone 2: - Yahoo public comment extraction if technically
-available - multiple URLs - CSV export
-
-Milestone 3: - MSN adapter - shared source router
-
-Milestone 4: - simple desktop application - topic/search-assisted
-workflow - batch collection
-
-Only after these milestones should additional sources be considered.
+**Current Operational Focus**:
+- Yahoo News and MSN remain the primary, actively used, and user-facing sources.
+- The 8 additional blog and government adapters remain internal implementations and must not be activated, exposed in user interfaces, or modified without explicit user approval.
+- Any new build steps must follow the mandatory Gate 1 / Gate 2 approval workflow.
